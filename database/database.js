@@ -37,26 +37,27 @@ function initDatabase() {
         )
       `);
 
-      // Images table to store image metadata
-      db.run(`
-        CREATE TABLE IF NOT EXISTS images (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          repository_id INTEGER NOT NULL,
-          filename TEXT NOT NULL,
-          original_name TEXT NOT NULL,
-          file_path TEXT NOT NULL,
-          file_size INTEGER NOT NULL,
-          mime_type TEXT NOT NULL,
-          width INTEGER,
-          height INTEGER,
-          github_url TEXT,
-          sha TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (repository_id) REFERENCES repositories (id)
-        )
-      `);
+              // Images table to store image metadata
+        db.run(`
+          CREATE TABLE IF NOT EXISTS images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            repository_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            original_name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            mime_type TEXT NOT NULL,
+            width INTEGER,
+            height INTEGER,
+            github_url TEXT,
+            cdn_url TEXT,
+            sha TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (repository_id) REFERENCES repositories (id)
+          )
+        `);
       
-      // Add SHA column if it doesn't exist (for existing databases)
+      // Add SHA and CDN URL columns if they don't exist (for existing databases)
       db.all(`PRAGMA table_info(images)`, (err, columns) => {
         if (err) {
           console.error('Error checking table schema:', err);
@@ -65,12 +66,24 @@ function initDatabase() {
         
         if (columns && Array.isArray(columns)) {
           const hasShaColumn = columns.some(col => col.name === 'sha');
+          const hasCdnUrlColumn = columns.some(col => col.name === 'cdn_url');
+          
           if (!hasShaColumn) {
             db.run(`ALTER TABLE images ADD COLUMN sha TEXT`, (err) => {
               if (err) {
                 console.error('Error adding SHA column:', err);
               } else {
                 console.log('SHA column added successfully');
+              }
+            });
+          }
+          
+          if (!hasCdnUrlColumn) {
+            db.run(`ALTER TABLE images ADD COLUMN cdn_url TEXT`, (err) => {
+              if (err) {
+                console.error('Error adding CDN URL column:', err);
+              } else {
+                console.log('CDN URL column added successfully');
               }
             });
           }

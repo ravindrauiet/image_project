@@ -220,6 +220,28 @@ function ImageCard({ image, repositoryId, onDeleted }) {
           <Calendar className="h-3 w-3 mr-1" />
           <span>{new Date(image.created_at).toLocaleDateString()}</span>
         </div>
+        
+        {/* CDN URL Display */}
+        {image.cdn_url && (
+          <div className="mt-2 p-2 bg-gray-50 rounded border">
+            <p className="text-xs text-gray-600 mb-1">CDN URL:</p>
+            <div className="flex items-center space-x-2">
+              <input
+                type="text"
+                value={image.cdn_url}
+                readOnly
+                className="text-xs bg-white border rounded px-2 py-1 flex-1"
+              />
+              <button
+                onClick={() => navigator.clipboard.writeText(image.cdn_url)}
+                className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
+                title="Copy CDN URL"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Actions */}

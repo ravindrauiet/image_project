@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Image CDN Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .demo-section {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .demo-section h2 {
+            color: #667eea;
+            margin-bottom: 1rem;
+            font-size: 1.8rem;
+        }
+
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .image-card {
+            border: 1px solid #e1e5e9;
+            border-radius: 10px;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .image-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        }
+
+        .image-card img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .image-info {
+            padding: 1rem;
+        }
+
+        .image-info h3 {
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+
+        .cdn-url {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 0.5rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            word-break: break-all;
+            margin: 0.5rem 0;
+        }
+
+        .copy-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.3s ease;
+        }
+
+        .copy-btn:hover {
+            background: #5a6fd8;
+        }
+
+        .copy-btn:active {
+            transform: scale(0.98);
+        }
+
+        .usage-examples {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-top: 1rem;
+        }
+
+        .usage-examples h4 {
+            color: #495057;
+            margin-bottom: 1rem;
+        }
+
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 1rem;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .feature {
+            text-align: center;
+            padding: 1.5rem;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border: 1px solid #e9ecef;
+        }
+
+        .feature h3 {
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+
+        .feature p {
+            color: #6c757d;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .image-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 GitHub Image CDN Demo</h1>
+            <p>Transform your GitHub repositories into a powerful CDN for images</p>
+        </div>
+
+        <div class="demo-section">
+            <h2>✨ How It Works</h2>
+            <p>Upload images through our web interface, and instantly get HTTPS URLs that can be used in any web project. Images are automatically optimized and served through GitHub's global CDN.</p>
+            
+            <div class="features">
+                <div class="feature">
+                    <h3>📤 Upload</h3>
+                    <p>Simple drag & drop interface</p>
+                </div>
+                <div class="feature">
+                    <h3>⚡ Optimize</h3>
+                    <p>Automatic resizing & WebP conversion</p>
+                </div>
+                <div class="feature">
+                    <h3>🌐 CDN</h3>
+                    <p>Global delivery via GitHub</p>
+                </div>
+                <div class="feature">
+                    <h3>🔗 Use</h3>
+                    <p>Direct HTTPS URLs for projects</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="demo-section">
+            <h2>🖼️ Live CDN Examples</h2>
+            <p>These images are served directly from GitHub's CDN. Replace the URLs with your own uploaded images!</p>
+            
+            <div class="image-grid">
+                <div class="image-card">
+                    <img src="https://raw.githubusercontent.com/ravindrauiet/public/main/images/1755244102310_xf3hn0j5xy.png" 
+                         alt="Sample Image 1" 
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <div class="image-info">
+                        <h3>Sample Image 1</h3>
+                        <div class="cdn-url">https://raw.githubusercontent.com/ravindrauiet/public/main/images/1755244102310_xf3hn0j5xy.png</div>
+                        <button class="copy-btn" onclick="copyToClipboard(this.previousElementSibling.textContent)">Copy URL</button>
+                    </div>
+                </div>
+
+                <div class="image-card">
+                    <img src="https://raw.githubusercontent.com/ravindrauiet/public/main/images/placeholder2.png" 
+                         alt="Sample Image 2" 
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <div class="image-info">
+                        <h3>Sample Image 2</h3>
+                        <div class="cdn-url">https://raw.githubusercontent.com/ravindrauiet/public/main/images/placeholder2.png</div>
+                        <button class="copy-btn" onclick="copyToClipboard(this.previousElementSibling.textContent)">Copy URL</button>
+                    </div>
+                </div>
+
+                <div class="image-card">
+                    <img src="https://raw.githubusercontent.com/ravindrauiet/public/main/images/placeholder3.png" 
+                         alt="Sample Image 3" 
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <div class="image-info">
+                        <h3>Sample Image 3</h3>
+                        <div class="cdn-url">https://raw.githubusercontent.com/ravindrauiet/public/main/images/placeholder3.png</div>
+                        <button class="copy-btn" onclick="copyToClipboard(this.previousElementSibling.textContent)">Copy URL</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="demo-section">
+            <h2>💻 Usage Examples</h2>
+            <p>Here's how you can use the CDN URLs in your projects:</p>
+            
+            <div class="usage-examples">
+                <h4>HTML</h4>
+                <div class="code-block">
+&lt;img src="https://raw.githubusercontent.com/username/repo/main/images/filename.png" 
+     alt="Description" 
+     width="800" 
+     height="600"&gt;
+                </div>
+
+                <h4>CSS</h4>
+                <div class="code-block">
+.hero-section {
+  background-image: url('https://raw.githubusercontent.com/username/repo/main/images/hero-bg.png');
+  background-size: cover;
+}
+                </div>
+
+                <h4>JavaScript</h4>
+                <div class="code-block">
+const img = new Image();
+img.src = 'https://raw.githubusercontent.com/username/repo/main/images/dynamic.png';
+img.onload = () => document.body.appendChild(img);
+                </div>
+
+                <h4>React</h4>
+                <div class="code-block">
+function MyComponent() {
+  return (
+    &lt;img 
+      src="https://raw.githubusercontent.com/username/repo/main/images/logo.png"
+      alt="Logo"
+      className="w-32 h-32"
+    /&gt;
+  );
+}
+                </div>
+            </div>
+        </div>
+
+        <div class="demo-section">
+            <h2>🚀 Benefits</h2>
+            <ul style="list-style: none; padding: 0;">
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #e9ecef;">✅ <strong>Fast:</strong> GitHub's global CDN ensures worldwide delivery</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #e9ecef;">✅ <strong>Reliable:</strong> 99.9% uptime guarantee</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #e9ecef;">✅ <strong>Free:</strong> No hosting costs for public repositories</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #e9ecef;">✅ <strong>Secure:</strong> HTTPS by default</li>
+                <li style="padding: 0.5rem 0; border-bottom: 1px solid #e9ecef;">✅ <strong>Versioned:</strong> Track changes with Git</li>
+                <li style="padding: 0.5rem 0;">✅ <strong>Optimized:</strong> Automatic image optimization</li>
+            </ul>
+        </div>
+
+        <div class="demo-section">
+            <h2>📱 Get Started</h2>
+            <p>Ready to transform your GitHub repositories into a CDN?</p>
+            <ol style="margin-left: 1.5rem; margin-top: 1rem;">
+                <li>Upload images through our web interface</li>
+                <li>Get instant CDN URLs</li>
+                <li>Use in any web project</li>
+                <li>Enjoy global CDN performance!</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                btn.style.background = '#28a745';
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '#667eea';
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                alert('Failed to copy URL');
+            });
+        }
+
+        // Add some interactivity
+        document.addEventListener('DOMContentLoaded', function() {
+            // Animate features on scroll
+            const features = document.querySelectorAll('.feature');
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.style.opacity = '1';
+                        entry.target.style.transform = 'translateY(0)';
+                    }
+                });
+            });
+
+            features.forEach(feature => {
+                feature.style.opacity = '0';
+                feature.style.transform = 'translateY(20px)';
+                feature.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+                observer.observe(feature);
+            });
+        });
+    </script>
+</body>
+</html>

@@ -229,12 +229,14 @@ router.post('/repositories/:repoId/images', ensureAuthenticated, upload.single('
                 branch: 'main'
               });
 
-              const githubUrl = response.data.content.html_url;
+                            const githubUrl = response.data.content.html_url;
+              // Create CDN URL for direct image access
+              const cdnUrl = `https://raw.githubusercontent.com/${req.user.username}/${repo.name}/main/images/${uniqueFilename}`;
 
-                        // Store image metadata in database
-          db.run(
-            'INSERT INTO images (repository_id, filename, original_name, file_path, file_size, mime_type, width, height, github_url, sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [repoId, uniqueFilename, originalname, `images/${uniqueFilename}`, optimizedBuffer.length, 'image/webp', metadata.width, metadata.height, githubUrl, response.data.content.sha],
+              // Store image metadata in database
+              db.run(
+                'INSERT INTO images (repository_id, filename, original_name, file_path, file_size, mime_type, width, height, github_url, cdn_url, sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [repoId, uniqueFilename, originalname, `images/${uniqueFilename}`, optimizedBuffer.length, 'image/webp', metadata.width, metadata.height, githubUrl, cdnUrl, response.data.content.sha],
             function(err) {
               if (err) {
                 console.error('Database error:', err);
@@ -246,6 +248,7 @@ router.post('/repositories/:repoId/images', ensureAuthenticated, upload.single('
                 filename: uniqueFilename,
                 original_name: originalname,
                 github_url: githubUrl,
+                cdn_url: cdnUrl,
                 width: metadata.width,
                 height: metadata.height,
                 file_size: optimizedBuffer.length,
@@ -471,6 +474,86 @@ router.get('/images/:imageId', ensureAuthenticated, async (req, res) => {
     );
   } catch (error) {
     console.error('Error fetching image:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get CDN URLs for all images in a repository (public endpoint for customers)
+router.get('/repositories/:repoId/cdn', async (req, res) => {
+  try {
+    const { repoId } = req.params;
+    
+    // Get repository details
+    db.get(
+      'SELECT r.*, u.username FROM repositories r JOIN users u ON r.user_id = u.id WHERE r.id = ?',
+      [repoId],
+      (err, repo) => {
+        if (err || !repo) {
+          return res.status(404).json({ error: 'Repository not found' });
+        }
+        
+        // Get all images with CDN URLs
+        db.all(
+          'SELECT id, filename, original_name, cdn_url, width, height, file_size, created_at FROM images WHERE repository_id = ? ORDER BY created_at DESC',
+          [repoId],
+          (err, images) => {
+            if (err) {
+              console.error('Database error:', err);
+              return res.status(500).json({ error: 'Failed to fetch images' });
+            }
+            
+            res.json({
+              repository: {
+                name: repo.name,
+                username: repo.username,
+                description: repo.description
+              },
+              images: images.map(img => ({
+                ...img,
+                // Generate CDN URL if not stored
+                cdn_url: img.cdn_url || `https://raw.githubusercontent.com/${repo.username}/${repo.name}/main/images/${img.filename}`
+              }))
+            });
+          }
+        );
+      }
+    );
+  } catch (error) {
+    console.error('Error fetching CDN URLs:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get CDN URL for a specific image (public endpoint for customers)
+router.get('/images/:imageId/cdn', async (req, res) => {
+  try {
+    const { imageId } = req.params;
+    
+    // Get image details
+    db.get(
+      'SELECT i.*, r.name, u.username FROM images i JOIN repositories r ON i.repository_id = r.id JOIN users u ON r.user_id = u.id WHERE i.id = ?',
+      [imageId],
+      (err, image) => {
+        if (err || !image) {
+          return res.status(404).json({ error: 'Image not found' });
+        }
+        
+        const cdnUrl = image.cdn_url || `https://raw.githubusercontent.com/${image.username}/${image.name}/main/images/${image.filename}`;
+        
+        res.json({
+          id: image.id,
+          filename: image.filename,
+          original_name: image.original_name,
+          cdn_url: cdnUrl,
+          width: image.width,
+          height: image.height,
+          file_size: image.file_size,
+          created_at: image.created_at
+        });
+      }
+    );
+  } catch (error) {
+    console.error('Error fetching image CDN URL:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
