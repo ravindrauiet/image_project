@@ -50,10 +50,34 @@ function initDatabase() {
           width INTEGER,
           height INTEGER,
           github_url TEXT,
+          sha TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (repository_id) REFERENCES repositories (id)
         )
       `);
+      
+      // Add SHA column if it doesn't exist (for existing databases)
+      db.all(`PRAGMA table_info(images)`, (err, columns) => {
+        if (err) {
+          console.error('Error checking table schema:', err);
+          return;
+        }
+        
+        if (columns && Array.isArray(columns)) {
+          const hasShaColumn = columns.some(col => col.name === 'sha');
+          if (!hasShaColumn) {
+            db.run(`ALTER TABLE images ADD COLUMN sha TEXT`, (err) => {
+              if (err) {
+                console.error('Error adding SHA column:', err);
+              } else {
+                console.log('SHA column added successfully');
+              }
+            });
+          }
+        } else {
+          console.log('No columns found or invalid response');
+        }
+      });
 
       // Create indexes for better performance
       db.run(`CREATE INDEX IF NOT EXISTS idx_users_github_id ON users(github_id)`);

@@ -231,27 +231,28 @@ router.post('/repositories/:repoId/images', ensureAuthenticated, upload.single('
 
               const githubUrl = response.data.content.html_url;
 
-              // Store image metadata in database
-              db.run(
-                'INSERT INTO images (repository_id, filename, original_name, file_path, file_size, mime_type, width, height, github_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [repoId, uniqueFilename, originalname, `images/${uniqueFilename}`, optimizedBuffer.length, 'image/webp', metadata.width, metadata.height, githubUrl],
-                function(err) {
-                  if (err) {
-                    console.error('Database error:', err);
-                    return res.status(500).json({ error: 'Failed to save image metadata' });
-                  }
+                        // Store image metadata in database
+          db.run(
+            'INSERT INTO images (repository_id, filename, original_name, file_path, file_size, mime_type, width, height, github_url, sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [repoId, uniqueFilename, originalname, `images/${uniqueFilename}`, optimizedBuffer.length, 'image/webp', metadata.width, metadata.height, githubUrl, response.data.content.sha],
+            function(err) {
+              if (err) {
+                console.error('Database error:', err);
+                return res.status(500).json({ error: 'Failed to save image metadata' });
+              }
 
-                  res.status(201).json({
-                    id: this.lastID,
-                    filename: uniqueFilename,
-                    original_name: originalname,
-                    github_url: githubUrl,
-                    width: metadata.width,
-                    height: metadata.height,
-                    file_size: optimizedBuffer.length
-                  });
-                }
-              );
+              res.status(201).json({
+                id: this.lastID,
+                filename: uniqueFilename,
+                original_name: originalname,
+                github_url: githubUrl,
+                width: metadata.width,
+                height: metadata.height,
+                file_size: optimizedBuffer.length,
+                sha: response.data.content.sha
+              });
+            }
+          );
             } catch (processingError) {
               console.error('Image processing error:', processingError);
               res.status(500).json({ error: 'Failed to process image' });
@@ -341,20 +342,74 @@ router.delete('/repositories/:repoId/images/:imageId', ensureAuthenticated, asyn
           [imageId, repoId, user.id],
           async (err, image) => {
             if (err || !image) {
+              console.error('Image not found:', { imageId, repoId, userId: user.id, error: err });
               return res.status(404).json({ error: 'Image not found or access denied' });
             }
 
-            try {
-              const octokit = new Octokit({ auth: image.access_token });
+            console.log('Image found for deletion:', { 
+              imageId, 
+              filename: image.filename, 
+              sha: image.sha, 
+              hasSha: !!image.sha,
+              accessToken: image.access_token ? 'present' : 'missing'
+            });
 
-              // Delete from GitHub
-              await octokit.rest.repos.deleteFile({
+            if (!image.sha) {
+              console.log('Image SHA missing, attempting to fetch from GitHub...');
+              
+              try {
+                const octokit = new Octokit({ auth: image.access_token });
+                
+                // Try to get the file info from GitHub to get the SHA
+                const fileResponse = await octokit.rest.repos.getContent({
+                  owner: req.user.username,
+                  repo: image.name,
+                  path: image.file_path,
+                  ref: 'main'
+                });
+                
+                if (fileResponse.data && fileResponse.data.sha) {
+                  console.log('Retrieved SHA from GitHub:', fileResponse.data.sha);
+                  image.sha = fileResponse.data.sha;
+                  
+                  // Update the SHA in database for future use
+                  db.run('UPDATE images SET sha = ? WHERE id = ?', [image.sha, imageId], (err) => {
+                    if (err) {
+                      console.error('Error updating SHA in database:', err);
+                    } else {
+                      console.log('SHA updated in database successfully');
+                    }
+                  });
+                } else {
+                  console.error('Could not retrieve SHA from GitHub');
+                  return res.status(400).json({ error: 'Could not retrieve image SHA from GitHub. Cannot delete.' });
+                }
+              } catch (githubError) {
+                console.error('Error fetching SHA from GitHub:', githubError.message);
+                return res.status(400).json({ error: 'Could not retrieve image SHA from GitHub. Cannot delete.' });
+              }
+            }
+
+            try {
+              console.log('Attempting GitHub deletion:', {
                 owner: req.user.username,
                 repo: image.name,
                 path: image.file_path,
-                message: `Delete image: ${image.original_name}`,
-                sha: image.sha // Note: You'll need to store the SHA when uploading
+                sha: image.sha
               });
+
+              const octokit = new Octokit({ auth: image.access_token });
+
+              // Delete from GitHub
+              const deleteResponse = await octokit.rest.repos.deleteFile({
+                owner: req.user.username,
+                repo: image.name, // This is the repository name from the JOIN
+                path: image.file_path,
+                message: `Delete image: ${image.original_name}`,
+                sha: image.sha
+              });
+
+              console.log('GitHub deletion successful:', deleteResponse.data);
 
               // Delete from database
               db.run('DELETE FROM images WHERE id = ?', [imageId], (err) => {
