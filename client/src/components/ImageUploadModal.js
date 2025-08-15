@@ -129,13 +129,22 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded }) {
             </label>
             
             <div
-              className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors duration-200 ${
+              className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors duration-200 cursor-pointer ${
                 selectedFile 
                   ? 'border-primary-300 bg-primary-50' 
-                  : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50'
+                  : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50 hover:shadow-md'
               }`}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
+              onClick={() => {
+                console.log('Upload area clicked, fileInputRef:', fileInputRef.current);
+                if (fileInputRef.current) {
+                  fileInputRef.current.click();
+                } else {
+                  console.error('fileInputRef is not available');
+                }
+              }}
+              title="Click to select an image file"
             >
               {preview ? (
                 <div className="space-y-4">
@@ -167,7 +176,7 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded }) {
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">
-                      <span className="font-medium text-primary-600">Click to upload</span> or drag and drop
+                      <span className="font-medium text-primary-600 hover:text-primary-700 transition-colors">Click to upload</span> or drag and drop
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
                       PNG, JPG, GIF up to 10MB
