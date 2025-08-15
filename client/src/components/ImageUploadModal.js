@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, Type, AlertCircle, FileImage } from 'lucide-react';
+import { X, Upload, Type, AlertCircle, FileImage, Folder, Eye } from 'lucide-react';
 
 function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded, isExternalRepository = false, externalRepositoryInfo = null }) {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -15,6 +15,13 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded, isEx
     position: 'bottom-right',
     margin: 20
   });
+  const [targetFolder, setTargetFolder] = useState('');
+  const [showFolderBrowser, setShowFolderBrowser] = useState(false);
+  const [folders, setFolders] = useState([]);
+  const [files, setFiles] = useState([]);
+  const [loadingFolders, setLoadingFolders] = useState(false);
+  const [currentPath, setCurrentPath] = useState('');
+  const [pathHistory, setPathHistory] = useState([]);
   const fileInputRef = useRef(null);
 
   // Function to get contrasting text color for background
@@ -32,6 +39,73 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded, isEx
     
     // Return black for light backgrounds, white for dark backgrounds
     return luminance > 0.5 ? '#000000' : '#FFFFFF';
+  };
+
+  // Function to browse repository folders
+  const browseFolders = async (path = '') => {
+    try {
+      setLoadingFolders(true);
+      setError(null);
+      
+      let endpoint;
+      if (isExternalRepository && externalRepositoryInfo) {
+        endpoint = `/api/github/repositories/${externalRepositoryInfo.owner}/${externalRepositoryInfo.name}/contents?path=${path}`;
+      } else {
+        endpoint = `/api/repositories/${repositoryId}/contents?path=${path}`;
+      }
+      
+      console.log('Browsing folders for path:', path, 'using endpoint:', endpoint);
+      
+      const response = await fetch(endpoint, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Repository contents received:', data);
+        setFolders(data.folders || []);
+        setFiles(data.files || []);
+        setCurrentPath(path);
+        setShowFolderBrowser(true);
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to fetch repository contents:', errorData);
+        setError(errorData.error || 'Failed to fetch repository contents');
+      }
+    } catch (err) {
+      console.error('Error browsing folders:', err);
+      setError('Failed to browse repository folders');
+    } finally {
+      setLoadingFolders(false);
+    }
+  };
+
+  // Function to navigate to a specific folder path
+  const navigateToPath = (newPath) => {
+    setPathHistory(prev => [...prev, currentPath]);
+    browseFolders(newPath);
+  };
+
+  // Function to navigate back
+  const navigateBack = () => {
+    if (pathHistory.length > 0) {
+      const previousPath = pathHistory[pathHistory.length - 1];
+      setPathHistory(prev => prev.slice(0, -1));
+      browseFolders(previousPath);
+    }
+  };
+
+  // Function to navigate to root
+  const navigateToRoot = () => {
+    setPathHistory([]);
+    browseFolders('');
+  };
+
+  // Function to select a folder
+  const selectFolder = (folderPath) => {
+    setTargetFolder(folderPath);
+    setShowFolderBrowser(false);
+    console.log('Selected folder:', folderPath);
   };
 
   if (!isOpen) return null;
@@ -96,6 +170,12 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded, isEx
       const formData = new FormData();
       formData.append('image', selectedFile);
       
+      // Add target folder if specified
+      if (targetFolder) {
+        formData.append('target_folder', targetFolder);
+        console.log('Uploading to folder:', targetFolder);
+      }
+      
       // Add watermark options if watermark text is provided
       if (watermarkOptions.text.trim()) {
         formData.append('watermark_text', watermarkOptions.text);
@@ -137,6 +217,12 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded, isEx
     setSelectedFile(null);
     setPreview(null);
     setError(null);
+    setTargetFolder('');
+    setShowFolderBrowser(false);
+    setFolders([]);
+    setFiles([]);
+    setCurrentPath('');
+    setPathHistory([]);
     setWatermarkOptions({
       text: '',
       color: '#FFFFFF',
@@ -145,7 +231,6 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded, isEx
       position: 'bottom-right',
       margin: 20
     });
-    setShowWatermarkOptions(false);
     onClose();
   };
 
@@ -418,6 +503,47 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded, isEx
             </div>
           )}
 
+          {/* Folder Selection */}
+          <div className="border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="font-medium text-gray-900 flex items-center space-x-2">
+                <Folder className="h-4 w-4 text-blue-600" />
+                <span>Upload Location</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => browseFolders()}
+                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors flex items-center space-x-2"
+              >
+                <Eye className="h-4 w-4" />
+                <span>Browse Repository</span>
+              </button>
+            </div>
+            
+            {targetFolder ? (
+              <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <Folder className="h-5 w-5 text-blue-600" />
+                  <span className="text-sm text-blue-800">
+                    <span className="font-medium">Selected Folder:</span> {targetFolder}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTargetFolder('')}
+                  className="text-sm text-blue-600 hover:text-blue-700"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <div className="text-center py-4 text-sm text-gray-500">
+                <p>No folder selected. Images will be uploaded to the root directory.</p>
+                <p className="mt-1">Click "Browse Repository" to select a specific folder.</p>
+              </div>
+            )}
+          </div>
+
           {/* Actions */}
           <div className="flex items-center justify-end space-x-3 pt-4">
             <button
@@ -445,6 +571,138 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded, isEx
           </div>
         </form>
       </div>
+
+      {/* Folder Browser Modal */}
+      {showFolderBrowser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900">Browse Repository</h3>
+              <button
+                onClick={() => setShowFolderBrowser(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {/* Navigation */}
+              <div className="flex items-center space-x-2 mb-4">
+                {currentPath && (
+                  <button
+                    onClick={navigateToRoot}
+                    className="px-3 py-1 text-sm bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors"
+                  >
+                    Root
+                  </button>
+                )}
+                {pathHistory.length > 0 && (
+                  <button
+                    onClick={navigateBack}
+                    className="px-3 py-1 text-sm bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors"
+                  >
+                    Back
+                  </button>
+                )}
+              </div>
+
+              {/* Current Path */}
+              {currentPath && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <span className="font-medium">Current Path:</span> {currentPath || 'Root'}
+                  </p>
+                </div>
+              )}
+
+              {loadingFolders ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading repository contents...</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Folders */}
+                  {folders.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center space-x-2">
+                        <Folder className="h-4 w-4 text-blue-600" />
+                        <span>Folders ({folders.length})</span>
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {folders.map((folder) => (
+                          <button
+                            key={folder.path}
+                            onClick={() => navigateToPath(folder.path)}
+                            className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors duration-200"
+                          >
+                            <div className="flex items-center space-x-3">
+                              <Folder className="h-5 w-5 text-blue-600" />
+                              <div>
+                                <p className="font-medium text-gray-900">{folder.name}</p>
+                                <p className="text-sm text-gray-500">{folder.path}</p>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Files */}
+                  {files.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center space-x-2">
+                        <FileImage className="h-4 w-4 text-green-600" />
+                        <span>Files ({files.length})</span>
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {files.map((file) => (
+                          <div
+                            key={file.path}
+                            className="w-full p-3 rounded-lg border border-gray-200 bg-gray-50"
+                          >
+                            <div className="flex items-center space-x-3">
+                              <FileImage className="h-5 w-5 text-green-600" />
+                              <div className="flex-1">
+                                <p className="font-medium text-gray-900">{file.name}</p>
+                                <p className="text-sm text-gray-500">{file.path}</p>
+                                <p className="text-xs text-gray-400">
+                                  {file.size ? `${(file.size / 1024).toFixed(1)} KB` : 'Unknown size'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Select Current Folder Button */}
+                  {currentPath && (
+                    <div className="pt-4 border-t border-gray-200">
+                      <button
+                        onClick={() => selectFolder(currentPath)}
+                        className="w-full py-3 px-4 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
+                      >
+                        Select This Folder: {currentPath}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Empty State */}
+                  {folders.length === 0 && files.length === 0 && !loadingFolders && (
+                    <div className="text-center py-8 bg-gray-50 rounded-lg">
+                      <p className="text-gray-600">This directory is empty</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
