@@ -13,19 +13,32 @@ const { initDatabase } = require('./database/database');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust proxy (fixes rate-limit X-Forwarded-For error)
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet());
 
 // CORS configuration
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Set-Cookie']
 }));
 
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  // Use a more reliable key generator
+  keyGenerator: (req) => {
+    // Use X-Forwarded-For if available, otherwise use req.ip
+    return req.headers['x-forwarded-for']?.split(',')[0] || req.ip || 'unknown';
+  }
 });
 app.use(limiter);
 
@@ -36,18 +49,31 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Session configuration
 app.use(session({
   secret: process.env.SESSION_SECRET || 'your-secret-key',
-  resave: false,
-  saveUninitialized: false,
+  resave: true, // Changed to true to ensure session is saved
+  saveUninitialized: true, // Changed to true to save new sessions
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: false, // Set to false for development (HTTP)
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    sameSite: 'lax', // Better cross-site compatibility
+    path: '/' // Ensure cookie is available across all routes
+  },
+  name: 'github-image-session' // Custom session name
 }));
 
 // Passport configuration
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Ensure session is saved after passport operations
+app.use((req, res, next) => {
+  if (req.session && req.session.passport) {
+    res.on('finish', () => {
+      req.session.save();
+    });
+  }
+  next();
+});
 
 // GitHub OAuth Strategy
 passport.use(new GitHubStrategy({

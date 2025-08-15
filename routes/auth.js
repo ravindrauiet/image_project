@@ -93,6 +93,17 @@ router.get('/user', (req, res) => {
 
 // Check authentication status
 router.get('/status', (req, res) => {
+  console.log('Auth status check:', {
+    sessionID: req.sessionID,
+    hasSession: !!req.session,
+    isAuthenticated: req.isAuthenticated(),
+    user: req.user ? { id: req.user.id, username: req.user.username } : null,
+    sessionData: {
+      passport: req.session.passport,
+      cookie: req.session.cookie
+    }
+  });
+  
   res.json({ 
     authenticated: req.isAuthenticated(),
     user: req.isAuthenticated() ? {

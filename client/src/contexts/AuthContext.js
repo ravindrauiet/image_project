@@ -19,13 +19,21 @@ export function AuthProvider({ children }) {
 
   const checkAuthStatus = async () => {
     try {
-      const response = await axios.get('/auth/status', { withCredentials: true });
+      const response = await axios.get('/auth/status', { 
+        withCredentials: true,
+        timeout: 5000 // 5 second timeout
+      });
       if (response.data.authenticated) {
         setUser(response.data.user);
         setIsAuthenticated(true);
+      } else {
+        setUser(null);
+        setIsAuthenticated(false);
       }
     } catch (error) {
       console.error('Auth check failed:', error);
+      setUser(null);
+      setIsAuthenticated(false);
     } finally {
       setLoading(false);
     }
