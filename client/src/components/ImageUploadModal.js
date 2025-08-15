@@ -1,13 +1,39 @@
 import React, { useState, useRef } from 'react';
 import axios from 'axios';
-import { X, Upload, Image, FileImage, AlertCircle } from 'lucide-react';
+import { X, Upload, Image, FileImage, AlertCircle, Type } from 'lucide-react';
 
 function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
+  const [showWatermarkOptions, setShowWatermarkOptions] = useState(false);
+  const [watermarkOptions, setWatermarkOptions] = useState({
+    text: '',
+    color: '#FFFFFF',
+    size: 24,
+    opacity: 0.8,
+    position: 'bottom-right',
+    margin: 20
+  });
   const fileInputRef = useRef(null);
+
+  // Function to get contrasting text color for background
+  const getContrastColor = (hexColor) => {
+    // Remove # if present
+    const hex = hexColor.replace('#', '');
+    
+    // Convert to RGB
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    
+    // Calculate luminance
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    
+    // Return black for light backgrounds, white for dark backgrounds
+    return luminance > 0.5 ? '#000000' : '#FFFFFF';
+  };
 
   if (!isOpen) return null;
 
@@ -49,6 +75,13 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded }) {
     e.preventDefault();
   };
 
+  const handleWatermarkOptionChange = (key, value) => {
+    setWatermarkOptions(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -63,6 +96,16 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded }) {
 
       const formData = new FormData();
       formData.append('image', selectedFile);
+      
+      // Add watermark options if watermark text is provided
+      if (watermarkOptions.text.trim()) {
+        formData.append('watermark_text', watermarkOptions.text);
+        formData.append('watermark_color', watermarkOptions.color);
+        formData.append('watermark_size', watermarkOptions.size);
+        formData.append('watermark_opacity', watermarkOptions.opacity);
+        formData.append('watermark_position', watermarkOptions.position);
+        formData.append('watermark_margin', watermarkOptions.margin);
+      }
 
       const response = await axios.post(
         `/api/repositories/${repositoryId}/images`,
@@ -89,6 +132,15 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded }) {
     setSelectedFile(null);
     setPreview(null);
     setError(null);
+    setWatermarkOptions({
+      text: '',
+      color: '#FFFFFF',
+      size: 24,
+      opacity: 0.8,
+      position: 'bottom-right',
+      margin: 20
+    });
+    setShowWatermarkOptions(false);
     onClose();
   };
 
@@ -204,6 +256,160 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded }) {
                 <p><span className="font-medium">Size:</span> {(selectedFile.size / 1024).toFixed(1)} KB</p>
                 <p><span className="font-medium">Type:</span> {selectedFile.type}</p>
               </div>
+            </div>
+          )}
+
+          {/* Watermark Options */}
+          {selectedFile && (
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-medium text-gray-900 flex items-center space-x-2">
+                  <Type className="h-4 w-4 text-primary-600" />
+                  <span>Watermark Options</span>
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setShowWatermarkOptions(!showWatermarkOptions)}
+                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                    showWatermarkOptions 
+                      ? 'bg-primary-100 text-primary-700 border border-primary-200' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {showWatermarkOptions ? 'Hide' : 'Show'} Options
+                </button>
+              </div>
+              
+              {showWatermarkOptions && (
+                <div className="space-y-4">
+                  {/* Watermark Text */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Watermark Text
+                    </label>
+                    <input
+                      type="text"
+                      value={watermarkOptions.text}
+                      onChange={(e) => handleWatermarkOptionChange('text', e.target.value)}
+                      placeholder="Enter watermark text..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    />
+                  </div>
+                  
+                  {/* Watermark Color */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Text Color
+                    </label>
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="color"
+                        value={watermarkOptions.color}
+                        onChange={(e) => handleWatermarkOptionChange('color', e.target.value)}
+                        className="h-10 w-16 border border-gray-300 rounded-md cursor-pointer"
+                      />
+                      <div className="flex-1">
+                        <div 
+                          className="h-8 rounded border border-gray-300 flex items-center justify-center text-sm font-medium"
+                          style={{ 
+                            backgroundColor: watermarkOptions.color,
+                            color: getContrastColor(watermarkOptions.color)
+                          }}
+                        >
+                          {watermarkOptions.text || 'Preview'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Watermark Size */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Text Size: {watermarkOptions.size}px
+                    </label>
+                    <input
+                      type="range"
+                      min="12"
+                      max="72"
+                      value={watermarkOptions.size}
+                      onChange={(e) => handleWatermarkOptionChange('size', parseInt(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  
+                  {/* Watermark Opacity */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Opacity: {Math.round(watermarkOptions.opacity * 100)}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="1"
+                      step="0.1"
+                      value={watermarkOptions.opacity}
+                      onChange={(e) => handleWatermarkOptionChange('opacity', parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  
+                  {/* Watermark Position */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Position
+                    </label>
+                    <select
+                      value={watermarkOptions.position}
+                      onChange={(e) => handleWatermarkOptionChange('position', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    >
+                      <option value="top-left">Top Left</option>
+                      <option value="top-right">Top Right</option>
+                      <option value="center">Center</option>
+                      <option value="bottom-left">Bottom Left</option>
+                      <option value="bottom-right">Bottom Right</option>
+                    </select>
+                  </div>
+                  
+                  {/* Watermark Margin */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Margin: {watermarkOptions.margin}px
+                    </label>
+                    <input
+                      type="range"
+                      min="5"
+                      max="100"
+                      value={watermarkOptions.margin}
+                      onChange={(e) => handleWatermarkOptionChange('margin', parseInt(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* Watermark Preview */}
+              {watermarkOptions.text.trim() && (
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <h5 className="text-sm font-medium text-gray-700 mb-2">Watermark Preview:</h5>
+                  <div className="relative bg-white rounded border border-gray-300 p-4 h-24 flex items-center justify-center">
+                    <div 
+                      className="text-center font-medium"
+                      style={{
+                        color: watermarkOptions.color,
+                        fontSize: `${Math.min(watermarkOptions.size, 48)}px`,
+                        opacity: watermarkOptions.opacity,
+                        textShadow: '1px 1px 2px rgba(0,0,0,0.3)'
+                      }}
+                    >
+                      {watermarkOptions.text}
+                    </div>
+                    <div className="absolute top-1 right-1 text-xs text-gray-500">
+                      {watermarkOptions.position}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

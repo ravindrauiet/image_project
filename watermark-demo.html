@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Image API - Upload-Time Watermarking Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8fafc;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #1e293b;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .feature-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background-color: #f8fafc;
+        }
+        .feature-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 15px;
+        }
+        .feature-description {
+            color: #64748b;
+            margin-bottom: 15px;
+        }
+        .code-block {
+            background-color: #1e293b;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+        .highlight {
+            background-color: #fef3c7;
+            padding: 2px 4px;
+            border-radius: 4px;
+            color: #92400e;
+        }
+        .steps {
+            list-style-type: none;
+            padding: 0;
+        }
+        .steps li {
+            background-color: #f1f5f9;
+            margin-bottom: 10px;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #3b82f6;
+        }
+        .steps li strong {
+            color: #1e40af;
+        }
+        .note {
+            background-color: #dbeafe;
+            border: 1px solid #93c5fd;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .note strong {
+            color: #1e40af;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 GitHub Image API - Upload-Time Watermarking</h1>
+        
+        <div class="feature-section">
+            <div class="feature-title">✨ What is Upload-Time Watermarking?</div>
+            <div class="feature-description">
+                Upload-time watermarking allows you to add text watermarks to your images <strong>during the upload process</strong>, 
+                before they are stored in GitHub. This means the watermark becomes a permanent part of the image file, 
+                making it ideal for branding, copyright protection, and professional image management.
+            </div>
+        </div>
+
+        <div class="feature-section">
+            <div class="feature-title">🚀 How It Works</div>
+            <ol class="steps">
+                <li><strong>Select Image:</strong> Choose an image file from your device</li>
+                <li><strong>Configure Watermark:</strong> Set watermark text, color, size, opacity, position, and margin</li>
+                <li><strong>Upload:</strong> The system processes the image with the watermark applied</li>
+                <li><strong>Store:</strong> The watermarked image is saved to GitHub with metadata</li>
+                <li><strong>Access:</strong> Use the CDN URL to access your watermarked image anywhere</li>
+            </ol>
+        </div>
+
+        <div class="feature-section">
+            <div class="feature-title">⚙️ Watermark Options</div>
+            <div class="feature-description">
+                You can customize every aspect of your watermark:
+            </div>
+            <ul>
+                <li><strong>Text:</strong> Custom watermark text (company name, copyright, etc.)</li>
+                <li><strong>Color:</strong> Choose any color for your watermark text</li>
+                <li><strong>Size:</strong> Adjust text size from 12px to 72px</li>
+                <li><strong>Opacity:</strong> Control transparency from 10% to 100%</li>
+                <li><strong>Position:</strong> Place watermark at top-left, top-right, center, bottom-left, or bottom-right</li>
+                <li><strong>Margin:</strong> Set distance from edges (5px to 100px)</li>
+            </ul>
+        </div>
+
+        <div class="feature-section">
+            <div class="feature-title">💡 Use Cases</div>
+            <div class="feature-description">
+                Upload-time watermarking is perfect for:
+            </div>
+            <ul>
+                <li><strong>Brand Protection:</strong> Add company logos or names to prevent unauthorized use</li>
+                <li><strong>Copyright:</strong> Include copyright notices on your images</li>
+                <li><strong>Professional Presentation:</strong> Add watermarks for client presentations</li>
+                <li><strong>Content Marketing:</strong> Brand images shared on social media</li>
+                <li><strong>Portfolio Management:</strong> Mark your creative work</li>
+            </ul>
+        </div>
+
+        <div class="feature-section">
+            <div class="feature-title">🔧 Technical Implementation</div>
+            <div class="feature-description">
+                The watermarking process uses the <span class="highlight">Jimp</span> library to:
+            </div>
+            <ul>
+                <li>Process images in memory during upload</li>
+                <li>Apply text watermarks with custom styling</li>
+                <li>Maintain image quality while adding watermarks</li>
+                <li>Store both original and watermarked metadata</li>
+            </ul>
+        </div>
+
+        <div class="feature-section">
+            <div class="feature-title">📱 Frontend Integration</div>
+            <div class="feature-description">
+                The watermark options are seamlessly integrated into the upload modal:
+            </div>
+            <div class="code-block">
+// Watermark options are automatically included in the form data
+if (watermarkOptions.text.trim()) {
+  formData.append('watermark_text', watermarkOptions.text);
+  formData.append('watermark_color', watermarkOptions.color);
+  formData.append('watermark_size', watermarkOptions.size);
+  formData.append('watermark_opacity', watermarkOptions.opacity);
+  formData.append('watermark_position', watermarkOptions.position);
+  formData.append('watermark_margin', watermarkOptions.margin);
+}
+            </div>
+        </div>
+
+        <div class="feature-section">
+            <div class="feature-title">🔄 Backend Processing</div>
+            <div class="feature-description">
+                The backend processes watermarks before storing images:
+            </div>
+            <div class="code-block">
+// Check if watermark should be applied
+const watermarkOptions = watermarkProcessor.parseWatermarkOptions(req.body);
+const hasWatermark = watermarkOptions.text && watermarkOptions.text.trim() !== '';
+
+// Apply watermark if specified
+if (hasWatermark) {
+  finalBuffer = await watermarkProcessor.addWatermark(buffer, watermarkOptions);
+  finalMetadata = await sharp(finalBuffer).metadata();
+}
+            </div>
+        </div>
+
+        <div class="note">
+            <strong>💡 Pro Tip:</strong> Upload-time watermarking is more efficient than dynamic watermarking because:
+            <ul>
+                <li>Watermarks are applied once during upload</li>
+                <li>No need to process images on every request</li>
+                <li>Better performance for frequently accessed images</li>
+                <li>Watermarks are permanently embedded in the file</li>
+            </ul>
+        </div>
+
+        <div class="feature-section">
+            <div class="feature-title">🎯 Getting Started</div>
+            <div class="feature-description">
+                To use upload-time watermarking:
+            </div>
+            <ol class="steps">
+                <li>Navigate to any repository in your dashboard</li>
+                <li>Click the "Upload Image" button</li>
+                <li>Select an image file</li>
+                <li>Click "Show Options" in the Watermark Options section</li>
+                <li>Configure your watermark settings</li>
+                <li>Click "Upload Image" to apply the watermark and upload</li>
+            </ol>
+        </div>
+
+        <div class="feature-section">
+            <div class="feature-title">🔍 Viewing Results</div>
+            <div class="feature-description">
+                After upload, you'll see:
+            </div>
+            <ul>
+                <li>A blue badge indicating "Watermark Applied During Upload"</li>
+                <li>The watermark text displayed below the badge</li>
+                <li>The watermarked image available via CDN URL</li>
+                <li>All watermark metadata stored in the database</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

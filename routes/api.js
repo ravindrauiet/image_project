@@ -5,6 +5,7 @@ const { Octokit } = require('octokit');
 const { db } = require('../database/database');
 const path = require('path');
 const fs = require('fs').promises;
+const watermarkProcessor = require('../utils/watermark');
 
 const router = express.Router();
 
@@ -195,9 +196,36 @@ router.post('/repositories/:repoId/images', ensureAuthenticated, upload.single('
             }
 
             try {
+              // Check if watermark should be applied
+              const watermarkOptions = watermarkProcessor.parseWatermarkOptions(req.body);
+              const hasWatermark = watermarkOptions.text && watermarkOptions.text.trim() !== '';
+              
+              console.log('Watermark options received:', req.body);
+              console.log('Parsed watermark options:', watermarkOptions);
+              console.log('Has watermark:', hasWatermark);
+              
+              let finalBuffer = buffer;
+              let finalMetadata = await sharp(buffer).metadata();
+              
+              // Apply watermark if specified
+              if (hasWatermark) {
+                try {
+                  console.log('Attempting to apply watermark...');
+                  finalBuffer = await watermarkProcessor.addWatermark(buffer, watermarkOptions);
+                  finalMetadata = await sharp(finalBuffer).metadata();
+                  console.log('Watermark applied successfully');
+                } catch (watermarkError) {
+                  console.error('Watermark processing error:', watermarkError);
+                  console.log('Continuing without watermark...');
+                  // Continue without watermark if it fails
+                  finalBuffer = buffer;
+                  finalMetadata = await sharp(buffer).metadata();
+                }
+              }
+              
               // Process image with Sharp
-              const image = sharp(buffer);
-              const metadata = await image.metadata();
+              const image = sharp(finalBuffer);
+              const metadata = finalMetadata;
               
               // Generate unique filename
               const timestamp = Date.now();
@@ -220,11 +248,15 @@ router.post('/repositories/:repoId/images', ensureAuthenticated, upload.single('
               const octokit = new Octokit({ auth: repo.access_token });
 
               // Upload to GitHub
+              const commitMessage = hasWatermark 
+                ? `Add image: ${originalname} (with watermark: ${watermarkOptions.text})`
+                : `Add image: ${originalname}`;
+              
               const response = await octokit.rest.repos.createOrUpdateFileContents({
                 owner: req.user.username,
                 repo: repo.name,
                 path: `images/${uniqueFilename}`,
-                message: `Add image: ${originalname}`,
+                message: commitMessage,
                 content: optimizedBuffer.toString('base64'),
                 branch: 'main'
               });
@@ -252,7 +284,9 @@ router.post('/repositories/:repoId/images', ensureAuthenticated, upload.single('
                 width: metadata.width,
                 height: metadata.height,
                 file_size: optimizedBuffer.length,
-                sha: response.data.content.sha
+                sha: response.data.content.sha,
+                watermark_applied: hasWatermark && finalBuffer !== buffer, // Only true if watermark was actually applied
+                watermark_text: hasWatermark && finalBuffer !== buffer ? watermarkOptions.text : null
               });
             }
           );

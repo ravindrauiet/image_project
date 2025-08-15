@@ -128,6 +128,7 @@ The application will be available at:
 ### 🚀 CDN Endpoints (Public Access - No Authentication Required)
 - `GET /api/repositories/:id/cdn` - Get all CDN URLs for a repository
 - `GET /api/images/:id/cdn` - Get CDN URL for a specific image
+- `GET /api/images/:id/watermark` - Get watermarked version of an image with dynamic parameters
 
 ## Usage
 
@@ -159,6 +160,36 @@ The application will be available at:
 - Images are served globally via GitHub's infrastructure
 - No authentication required for CDN access
 - Perfect for web projects, mobile apps, and APIs
+
+### 6. 🎨 Upload-Time Watermarking
+- Add watermarks during image upload for permanent results
+- Watermarks are baked into the image file during processing
+- Customize text, color, size, opacity, position, and margin
+- Consistent branding across all image uses
+- No need to re-process images later
+- Perfect for brand assets and professional content
+
+#### Watermark Options
+- **Text:** Custom watermark text for branding or copyright
+- **Color:** Any hex color for your watermark text
+- **Size:** Adjustable text size from 12px to 72px
+- **Opacity:** Control transparency from 10% to 100%
+- **Position:** Place watermark at 5 different positions
+- **Margin:** Set distance from edges (5px to 100px)
+
+#### How to Use
+1. Navigate to any repository in your dashboard
+2. Click the "Upload Image" button
+3. Select an image file
+4. Click "Show Options" in the Watermark Options section
+5. Configure your watermark settings
+6. Click "Upload Image" to apply the watermark and upload
+
+#### Benefits
+- ✅ **Permanent:** Watermark is baked into the image file
+- ✅ **Consistent:** Same watermark across all uses
+- ✅ **Efficient:** No need to re-process images
+- ✅ **Professional:** Perfect for brand assets
 
 #### CDN URL Format
 ```
