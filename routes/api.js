@@ -1,0 +1,315 @@
+const express = require('express');
+const multer = require('multer');
+const sharp = require('sharp');
+const { Octokit } = require('octokit');
+const { db } = require('../database/database');
+const path = require('path');
+const fs = require('fs').promises;
+
+const router = express.Router();
+
+// Middleware to check authentication
+function ensureAuthenticated(req, res, next) {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  res.status(401).json({ error: 'Authentication required' });
+}
+
+// Configure multer for file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Only allow image files
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'), false);
+    }
+  }
+});
+
+// Get user's repositories
+router.get('/repositories', ensureAuthenticated, async (req, res) => {
+  try {
+    const { db } = require('../database/database');
+    
+    db.all(
+      'SELECT * FROM repositories WHERE user_id = (SELECT id FROM users WHERE github_id = ?) ORDER BY created_at DESC',
+      [req.user.id],
+      (err, repositories) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Failed to fetch repositories' });
+        }
+        res.json(repositories);
+      }
+    );
+  } catch (error) {
+    console.error('Error fetching repositories:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Create new repository
+router.post('/repositories', ensureAuthenticated, async (req, res) => {
+  try {
+    const { name, description, private: isPrivate } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ error: 'Repository name is required' });
+    }
+
+    // Get user's access token
+    db.get('SELECT access_token FROM users WHERE github_id = ?', [req.user.id], async (err, user) => {
+      if (err || !user) {
+        return res.status(500).json({ error: 'User not found' });
+      }
+
+      const octokit = new Octokit({ auth: user.access_token });
+
+      try {
+        // Create repository on GitHub
+        const response = await octokit.rest.repos.createForAuthenticatedUser({
+          name,
+          description,
+          private: isPrivate || false,
+          auto_init: true
+        });
+
+        const repo = response.data;
+
+        // Store repository in database
+        db.run(
+          'INSERT INTO repositories (user_id, github_repo_id, name, full_name, description, private) VALUES ((SELECT id FROM users WHERE github_id = ?), ?, ?, ?, ?, ?)',
+          [req.user.id, repo.id, repo.name, repo.full_name, description || '', isPrivate || false],
+          function(err) {
+            if (err) {
+              console.error('Database error:', err);
+              return res.status(500).json({ error: 'Failed to save repository' });
+            }
+
+            res.status(201).json({
+              id: this.lastID,
+              github_repo_id: repo.id,
+              name: repo.name,
+              full_name: repo.full_name,
+              description: repo.description,
+              private: repo.private,
+              html_url: repo.html_url
+            });
+          }
+        );
+      } catch (githubError) {
+        console.error('GitHub API error:', githubError);
+        res.status(400).json({ 
+          error: 'Failed to create repository on GitHub',
+          details: githubError.message 
+        });
+      }
+    });
+  } catch (error) {
+    console.error('Error creating repository:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Upload image to repository
+router.post('/repositories/:repoId/images', ensureAuthenticated, upload.single('image'), async (req, res) => {
+  try {
+    const { repoId } = req.params;
+    const { filename, originalname, mimetype, buffer } = req.file;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    // Verify repository belongs to user
+    db.get(
+      'SELECT r.*, u.access_token FROM repositories r JOIN users u ON r.user_id = u.id WHERE r.id = ? AND u.github_id = ?',
+      [repoId, req.user.id],
+      async (err, repo) => {
+        if (err || !repo) {
+          return res.status(404).json({ error: 'Repository not found or access denied' });
+        }
+
+        try {
+          // Process image with Sharp
+          const image = sharp(buffer);
+          const metadata = await image.metadata();
+          
+          // Generate unique filename
+          const timestamp = Date.now();
+          const fileExtension = path.extname(originalname);
+          const uniqueFilename = `${timestamp}_${Math.random().toString(36).substring(2)}${fileExtension}`;
+          
+          // Optimize image (resize if too large, convert to WebP for better compression)
+          let optimizedBuffer;
+          if (metadata.width > 1920 || metadata.height > 1080) {
+            optimizedBuffer = await image
+              .resize(1920, 1080, { fit: 'inside', withoutEnlargement: true })
+              .webp({ quality: 85 })
+              .toBuffer();
+          } else {
+            optimizedBuffer = await image
+              .webp({ quality: 85 })
+              .toBuffer();
+          }
+
+          const octokit = new Octokit({ auth: repo.access_token });
+
+          // Upload to GitHub
+          const response = await octokit.rest.repos.createOrUpdateFileContents({
+            owner: req.user.username,
+            repo: repo.name,
+            path: `images/${uniqueFilename}`,
+            message: `Add image: ${originalname}`,
+            content: optimizedBuffer.toString('base64'),
+            branch: 'main'
+          });
+
+          const githubUrl = response.data.content.html_url;
+
+          // Store image metadata in database
+          db.run(
+            'INSERT INTO images (repository_id, filename, original_name, file_path, file_size, mime_type, width, height, github_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [repoId, uniqueFilename, originalname, `images/${uniqueFilename}`, optimizedBuffer.length, 'image/webp', metadata.width, metadata.height, githubUrl],
+            function(err) {
+              if (err) {
+                console.error('Database error:', err);
+                return res.status(500).json({ error: 'Failed to save image metadata' });
+              }
+
+              res.status(201).json({
+                id: this.lastID,
+                filename: uniqueFilename,
+                original_name: originalname,
+                github_url: githubUrl,
+                width: metadata.width,
+                height: metadata.height,
+                file_size: optimizedBuffer.length
+              });
+            }
+          );
+        } catch (processingError) {
+          console.error('Image processing error:', processingError);
+          res.status(500).json({ error: 'Failed to process image' });
+        }
+      }
+    );
+  } catch (error) {
+    console.error('Error uploading image:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get images from repository
+router.get('/repositories/:repoId/images', ensureAuthenticated, async (req, res) => {
+  try {
+    const { repoId } = req.params;
+
+    // Verify repository belongs to user
+    db.get(
+      'SELECT r.* FROM repositories r JOIN users u ON r.user_id = u.id WHERE r.id = ? AND u.github_id = ?',
+      [repoId, req.user.id],
+      (err, repo) => {
+        if (err || !repo) {
+          return res.status(404).json({ error: 'Repository not found or access denied' });
+        }
+
+        // Get images for this repository
+        db.all(
+          'SELECT * FROM images WHERE repository_id = ? ORDER BY created_at DESC',
+          [repoId],
+          (err, images) => {
+            if (err) {
+              console.error('Database error:', err);
+              return res.status(500).json({ error: 'Failed to fetch images' });
+            }
+            res.json(images);
+          }
+        );
+      }
+    );
+  } catch (error) {
+    console.error('Error fetching images:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete image from repository
+router.delete('/repositories/:repoId/images/:imageId', ensureAuthenticated, async (req, res) => {
+  try {
+    const { repoId, imageId } = req.params;
+
+    // Get image and repository details
+    db.get(
+      'SELECT i.*, r.name, u.access_token FROM images i JOIN repositories r ON i.repository_id = r.id JOIN users u ON r.user_id = u.id WHERE i.id = ? AND r.id = ? AND u.github_id = ?',
+      [imageId, repoId, req.user.id],
+      async (err, image) => {
+        if (err || !image) {
+          return res.status(404).json({ error: 'Image not found or access denied' });
+        }
+
+        try {
+          const octokit = new Octokit({ auth: image.access_token });
+
+          // Delete from GitHub
+          await octokit.rest.repos.deleteFile({
+            owner: req.user.username,
+            repo: image.name,
+            path: image.file_path,
+            message: `Delete image: ${image.original_name}`,
+            sha: image.sha // Note: You'll need to store the SHA when uploading
+          });
+
+          // Delete from database
+          db.run('DELETE FROM images WHERE id = ?', [imageId], (err) => {
+            if (err) {
+              console.error('Database error:', err);
+              return res.status(500).json({ error: 'Failed to delete image from database' });
+            }
+
+            res.json({ message: 'Image deleted successfully' });
+          });
+        } catch (githubError) {
+          console.error('GitHub API error:', githubError);
+          res.status(400).json({ 
+            error: 'Failed to delete image from GitHub',
+            details: githubError.message 
+          });
+        }
+      }
+    );
+  } catch (error) {
+    console.error('Error deleting image:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get image by ID
+router.get('/images/:imageId', ensureAuthenticated, async (req, res) => {
+  try {
+    const { imageId } = req.params;
+
+    db.get(
+      'SELECT i.*, r.name FROM images i JOIN repositories r ON i.repository_id = r.id JOIN users u ON r.user_id = u.id WHERE i.id = ? AND u.github_id = ?',
+      [imageId, req.user.id],
+      (err, image) => {
+        if (err || !image) {
+          return res.status(404).json({ error: 'Image not found or access denied' });
+        }
+        res.json(image);
+      }
+    );
+  } catch (error) {
+    console.error('Error fetching image:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+module.exports = router;
+
