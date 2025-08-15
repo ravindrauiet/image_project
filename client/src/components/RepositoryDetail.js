@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import axios from 'axios';
-import { ArrowLeft, Upload, Image, Trash2, ExternalLink, Calendar, FileImage, Type } from 'lucide-react';
+import { ArrowLeft, Trash2, Image as ImageIcon, Calendar, Type, ExternalLink, Upload, FileImage } from 'lucide-react';
 import ImageUploadModal from './ImageUploadModal';
 
 function RepositoryDetail() {
@@ -9,32 +8,37 @@ function RepositoryDetail() {
   const [repository, setRepository] = useState(null);
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showUploadModal, setShowUploadModal] = useState(false);
   const [error, setError] = useState(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
-  useEffect(() => {
-    fetchRepositoryData();
-  }, [repoId]);
-
-  const fetchRepositoryData = async () => {
+  const fetchRepositoryData = useCallback(async () => {
     try {
       setLoading(true);
-      // Fetch repository details and images
       const [repoResponse, imagesResponse] = await Promise.all([
-        axios.get(`/api/repositories/${repoId}`, { withCredentials: true }),
-        axios.get(`/api/repositories/${repoId}/images`, { withCredentials: true })
+        fetch(`/api/repositories/${repoId}`, { credentials: 'include' }),
+        fetch(`/api/repositories/${repoId}/images`, { credentials: 'include' })
       ]);
-      
-      setRepository(repoResponse.data);
-      setImages(imagesResponse.data);
-      setError(null);
+
+      if (repoResponse.ok && imagesResponse.ok) {
+        const repoData = await repoResponse.json();
+        const imagesData = await imagesResponse.json();
+        setRepository(repoData);
+        setImages(imagesData);
+        setError(null);
+      } else {
+        setError('Failed to load repository data');
+      }
     } catch (error) {
       console.error('Failed to fetch repository data:', error);
       setError('Failed to load repository data');
     } finally {
       setLoading(false);
     }
-  };
+  }, [repoId]);
+
+  useEffect(() => {
+    fetchRepositoryData();
+  }, [fetchRepositoryData]);
 
   const handleImageUploaded = (newImage) => {
     setImages([newImage, ...images]);
@@ -173,10 +177,17 @@ function ImageCard({ image, repositoryId, onDeleted }) {
 
     try {
       setDeleting(true);
-      await axios.delete(`/api/repositories/${repositoryId}/images/${image.id}`, {
-        withCredentials: true
+      const response = await fetch(`/api/repositories/${repositoryId}/images/${image.id}`, {
+        method: 'DELETE',
+        credentials: 'include'
       });
-      onDeleted(image.id);
+      
+      if (response.ok) {
+        onDeleted(image.id);
+      } else {
+        const errorData = await response.json();
+        alert(errorData.error || 'Failed to delete image');
+      }
     } catch (error) {
       console.error('Failed to delete image:', error);
       alert('Failed to delete image');
@@ -201,7 +212,7 @@ function ImageCard({ image, repositoryId, onDeleted }) {
           />
         ) : null}
         <div className="hidden w-full h-full items-center justify-center text-gray-400">
-          <Image className="h-12 w-12" />
+          <ImageIcon className="h-12 w-12" />
         </div>
       </div>
 
@@ -215,6 +226,13 @@ function ImageCard({ image, repositoryId, onDeleted }) {
           <span>{image.width} × {image.height}</span>
           <span>{(image.file_size / 1024).toFixed(1)} KB</span>
         </div>
+        
+        {image.target_folder && (
+          <div className="flex items-center justify-between text-sm text-gray-500">
+            <span>Folder:</span>
+            <span className="font-medium">{image.target_folder}/</span>
+          </div>
+        )}
         
         <div className="flex items-center text-xs text-gray-500">
           <Calendar className="h-3 w-3 mr-1" />

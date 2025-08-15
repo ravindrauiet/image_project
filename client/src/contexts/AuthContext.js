@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
 
 const AuthContext = createContext();
 
@@ -19,14 +18,22 @@ export function AuthProvider({ children }) {
 
   const checkAuthStatus = async () => {
     try {
-      const response = await axios.get('/auth/status', { 
-        withCredentials: true,
-        timeout: 5000 // 5 second timeout
+      const response = await fetch('/auth/status', { 
+        credentials: 'include',
+        method: 'GET'
       });
-      if (response.data.authenticated) {
-        setUser(response.data.user);
-        setIsAuthenticated(true);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.authenticated) {
+          setUser(data.user);
+          setIsAuthenticated(true);
+        } else {
+          setUser(null);
+          setIsAuthenticated(false);
+        }
       } else {
+        console.error('Auth check failed:', response.status, response.statusText);
         setUser(null);
         setIsAuthenticated(false);
       }
@@ -46,9 +53,17 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
-      await axios.get('/auth/logout', { withCredentials: true });
-      setUser(null);
-      setIsAuthenticated(false);
+      const response = await fetch('/auth/logout', { 
+        credentials: 'include',
+        method: 'GET'
+      });
+      
+      if (response.ok) {
+        setUser(null);
+        setIsAuthenticated(false);
+      } else {
+        console.error('Logout failed:', response.status, response.statusText);
+      }
     } catch (error) {
       console.error('Logout failed:', error);
     }

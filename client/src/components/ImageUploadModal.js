@@ -1,8 +1,7 @@
 import React, { useState, useRef } from 'react';
-import axios from 'axios';
-import { X, Upload, Image, FileImage, AlertCircle, Type } from 'lucide-react';
+import { X, Upload, Type, AlertCircle, FileImage } from 'lucide-react';
 
-function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded }) {
+function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded, isExternalRepository = false, externalRepositoryInfo = null }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -107,22 +106,28 @@ function ImageUploadModal({ isOpen, onClose, repositoryId, onImageUploaded }) {
         formData.append('watermark_margin', watermarkOptions.margin);
       }
 
-      const response = await axios.post(
-        `/api/repositories/${repositoryId}/images`,
-        formData,
-        {
-          withCredentials: true,
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
-      );
+      // Use different endpoint for external repositories
+      const endpoint = isExternalRepository && externalRepositoryInfo
+        ? `/api/github/repositories/${externalRepositoryInfo.owner}/${externalRepositoryInfo.name}/images`
+        : `/api/repositories/${repositoryId}/images`;
 
-      onImageUploaded(response.data);
-      handleClose();
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        onImageUploaded(data);
+        handleClose();
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to upload image');
+      }
     } catch (error) {
       console.error('Upload failed:', error);
-      setError(error.response?.data?.error || 'Failed to upload image');
+      setError('Failed to upload image');
     } finally {
       setUploading(false);
     }

@@ -5,6 +5,7 @@ import Navbar from './components/Navbar';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import RepositoryDetail from './components/RepositoryDetail';
+import ExternalRepositoryManager from './components/ExternalRepositoryManager';
 import './index.css';
 
 // Protected Route Component
@@ -45,6 +46,14 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <RepositoryDetail />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/external-repository/:owner/:repo" 
+              element={
+                <ProtectedRoute>
+                  <ExternalRepositoryManager />
                 </ProtectedRoute>
               } 
             />

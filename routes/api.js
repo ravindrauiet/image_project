@@ -33,20 +33,603 @@ const upload = multer({
   }
 });
 
+// Debug endpoint to see all repositories (temporary)
+router.get('/debug/repositories', ensureAuthenticated, async (req, res) => {
+  try {
+    console.log('Debug: Fetching all repositories');
+    
+    db.all('SELECT * FROM repositories', (err, repositories) => {
+      if (err) {
+        console.error('Debug database error:', err);
+        return res.status(500).json({ error: 'Failed to fetch repositories' });
+      }
+      
+      console.log('Debug: All repositories in database:', repositories);
+      res.json({ 
+        message: 'Debug: All repositories',
+        repositories: repositories,
+        count: repositories.length
+      });
+    });
+  } catch (error) {
+    console.error('Debug error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Debug endpoint to test folder browsing
+router.get('/debug/folders/:repoId', ensureAuthenticated, async (req, res) => {
+  try {
+    const { repoId } = req.params;
+    console.log('Debug: Testing folder browsing for repo:', repoId);
+    
+    // First get the user's database ID from their GitHub ID
+    db.get(
+      'SELECT id FROM users WHERE github_id = ?',
+      [req.user.id],
+      (err, user) => {
+        if (err) {
+          console.error('Debug database error:', err);
+          return res.status(500).json({ error: 'Failed to fetch user' });
+        }
+        
+        if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Verify repository belongs to user and get access token
+        db.get(
+          'SELECT r.*, u.access_token, u.username FROM repositories r JOIN users u ON r.user_id = u.id WHERE r.id = ? AND r.user_id = ?',
+          [repoId, user.id],
+          async (err, repo) => {
+            if (err || !repo) {
+              return res.status(404).json({ error: 'Repository not found or access denied' });
+            }
+
+            console.log('Debug: Repository found:', {
+              id: repo.id,
+              name: repo.name,
+              username: repo.username,
+              hasAccessToken: !!repo.access_token
+            });
+
+            try {
+              const octokit = new Octokit({ auth: repo.access_token });
+
+              // Get repository contents
+              const { data: contents } = await octokit.rest.repos.getContent({
+                owner: repo.username,
+                repo: repo.name,
+                path: '',
+                ref: 'main'
+              });
+
+              console.log('Debug: GitHub API response:', {
+                contentsLength: Array.isArray(contents) ? contents.length : 'not array',
+                firstItem: Array.isArray(contents) && contents.length > 0 ? contents[0] : 'no items'
+              });
+
+               // Filter to show only directories and image files
+               const folders = [];
+               const files = [];
+
+               if (Array.isArray(contents)) {
+                 contents.forEach(item => {
+                   if (item.type === 'dir') {
+                     folders.push({
+                       name: item.name,
+                       path: item.path,
+                       type: 'directory'
+                     });
+                   } else if (item.type === 'file') {
+                     files.push({
+                       name: item.name,
+                       path: item.path,
+                       type: 'file',
+                       size: item.size,
+                       url: item.download_url,
+                       extension: item.name.split('.').pop().toLowerCase()
+                     });
+                   }
+                 });
+               }
+
+               console.log('Debug: Processed data:', { folders, files });
+
+               res.json({
+                 debug: true,
+                 repository: {
+                   id: repo.id,
+                   name: repo.name,
+                   username: repo.username
+                 },
+                 folders,
+                 files,
+                 current_path: '',
+                 parent_path: '',
+                 raw_contents: contents
+               });
+
+            } catch (apiError) {
+              console.error('Debug GitHub API error:', apiError);
+              res.status(500).json({ 
+                error: 'Failed to fetch repository contents',
+                details: apiError.message,
+                status: apiError.status
+              });
+            }
+          }
+        );
+      }
+    );
+    
+  } catch (error) {
+    console.error('Debug error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Check if a GitHub repository exists and can be used
+router.get('/github/repositories/:owner/:repo/check', ensureAuthenticated, async (req, res) => {
+  try {
+    const { owner, repo } = req.params;
+    console.log('Checking repository:', `${owner}/${repo}`);
+    console.log('User ID from request:', req.user.id);
+    console.log('User object from request:', req.user);
+    
+    // Get the user's access token from database
+    db.get(
+      'SELECT access_token FROM users WHERE github_id = ?',
+      [req.user.id],
+      async (err, user) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Failed to fetch user' });
+        }
+        
+        console.log('Database user lookup result:', user);
+        
+        if (!user) {
+          console.error('User not found in database for GitHub ID:', req.user.id);
+          return res.status(404).json({ error: 'User not found' });
+        }
+        
+        try {
+          // Create Octokit instance with user's access token
+          const { Octokit } = require('octokit');
+          const octokit = new Octokit({
+            auth: user.access_token
+          });
+          
+          console.log('Created Octokit instance, checking repository access...');
+          
+          // Check if repository exists and user has access
+          const { data: repository } = await octokit.rest.repos.get({
+            owner,
+            repo
+          });
+          
+          console.log('Repository found:', repository.name);
+          console.log('Repository permissions:', repository.permissions);
+          
+          // Check if user has write access
+          const hasWriteAccess = repository.permissions && (
+            repository.permissions.push || 
+            repository.permissions.admin || 
+            repository.permissions.maintain
+          );
+          
+          console.log('Has write access:', hasWriteAccess);
+          
+          if (!hasWriteAccess) {
+            return res.status(403).json({ 
+              error: 'You do not have write access to this repository',
+              repository: {
+                name: repository.name,
+                full_name: repository.full_name,
+                private: repository.private,
+                html_url: repository.html_url,
+                permissions: repository.permissions
+              }
+            });
+          }
+          
+          res.json({
+            exists: true,
+            repository: {
+              id: repository.id,
+              name: repository.name,
+              full_name: repository.full_name,
+              description: repository.description,
+              private: repository.private,
+              html_url: repository.html_url,
+              clone_url: repository.clone_url,
+              created_at: repository.created_at,
+              updated_at: repository.updated_at,
+              default_branch: repository.default_branch,
+              permissions: repository.permissions
+            }
+          });
+          
+        } catch (githubError) {
+          console.error('GitHub API error:', githubError);
+          if (githubError.status === 404) {
+            res.status(404).json({ 
+              exists: false, 
+              error: 'Repository not found or you do not have access' 
+            });
+          } else {
+            res.status(500).json({ error: 'Failed to check repository' });
+          }
+        }
+      }
+    );
+    
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Upload image to external GitHub repository (not created through this app)
+router.post('/github/repositories/:owner/:repo/images', ensureAuthenticated, upload.single('image'), async (req, res) => {
+  try {
+    const { owner, repo } = req.params;
+    const { filename, originalname, mimetype, buffer } = req.file;
+    const targetFolder = req.body.target_folder || 'images'; // Get target folder from form data
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    // Validate target folder (prevent path traversal attacks)
+    if (targetFolder && (targetFolder.includes('..') || targetFolder.includes('//') || targetFolder.startsWith('/'))) {
+      return res.status(400).json({ error: 'Invalid folder path' });
+    }
+
+    // Get the user's access token from database
+    db.get(
+      'SELECT access_token FROM users WHERE github_id = ?',
+      [req.user.id],
+      async (err, user) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Failed to fetch user' });
+        }
+        
+        if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+
+        try {
+          // Check if watermark should be applied
+          const watermarkOptions = watermarkProcessor.parseWatermarkOptions(req.body);
+          const hasWatermark = watermarkOptions.text && watermarkOptions.text.trim() !== '';
+          
+          console.log('Watermark options received:', req.body);
+          console.log('Parsed watermark options:', watermarkOptions);
+          console.log('Has watermark:', hasWatermark);
+          
+          let finalBuffer = buffer;
+          let finalMetadata = await sharp(buffer).metadata();
+          
+          // Apply watermark if specified
+          if (hasWatermark) {
+            try {
+              console.log('Attempting to apply watermark...');
+              finalBuffer = await watermarkProcessor.addWatermark(buffer, watermarkOptions);
+              finalMetadata = await sharp(finalBuffer).metadata();
+              console.log('Watermark applied successfully');
+            } catch (watermarkError) {
+              console.error('Watermark processing error:', watermarkError);
+              console.log('Continuing without watermark...');
+              // Continue without watermark if it fails
+              finalBuffer = buffer;
+              finalMetadata = await sharp(buffer).metadata();
+            }
+          }
+          
+          // Process image with Sharp
+          const image = sharp(finalBuffer);
+          const metadata = finalMetadata;
+          
+          // Generate unique filename
+          const timestamp = Date.now();
+          const fileExtension = path.extname(originalname);
+          const uniqueFilename = `${timestamp}_${Math.random().toString(36).substring(2)}${fileExtension}`;
+          
+          // Optimize image (resize if too large, convert to WebP for better compression)
+          let optimizedBuffer;
+          if (metadata.width > 1920 || metadata.height > 1080) {
+            optimizedBuffer = await image
+              .resize(1920, 1080, { fit: 'inside', withoutEnlargement: true })
+              .webp({ quality: 85 })
+              .toBuffer();
+          } else {
+            optimizedBuffer = await image
+              .webp({ quality: 85 })
+              .toBuffer();
+          }
+
+          const octokit = new Octokit({ auth: user.access_token });
+
+          // Create folder if it doesn't exist (by creating a .gitkeep file)
+          if (targetFolder && targetFolder !== '') {
+            try {
+              await octokit.rest.repos.createOrUpdateFileContents({
+                owner,
+                repo,
+                path: `${targetFolder}/.gitkeep`,
+                message: `Create ${targetFolder}/ folder`,
+                content: Buffer.from('').toString('base64'), // Empty file
+                branch: 'main'
+              });
+              console.log(`Created folder: ${targetFolder}/`);
+            } catch (folderError) {
+              // Folder might already exist, continue
+              console.log(`Folder ${targetFolder}/ already exists or couldn't be created:`, folderError.message);
+            }
+          }
+
+          // Upload to GitHub
+          const commitMessage = hasWatermark 
+            ? `Add image: ${originalname} to ${targetFolder}/ (with watermark: ${watermarkOptions.text})`
+            : `Add image: ${originalname} to ${targetFolder}/`;
+          
+          const response = await octokit.rest.repos.createOrUpdateFileContents({
+            owner,
+            repo,
+            path: `${targetFolder}/${uniqueFilename}`,
+            message: commitMessage,
+            content: optimizedBuffer.toString('base64'),
+            branch: 'main'
+          });
+
+          const githubUrl = response.data.content.html_url;
+          // Create CDN URL for direct image access
+          const cdnUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/${targetFolder}/${uniqueFilename}`;
+
+          res.status(201).json({
+            id: `ext_${Date.now()}`,
+            filename: uniqueFilename,
+            original_name: originalname,
+            github_url: githubUrl,
+            cdn_url: cdnUrl,
+            target_folder: targetFolder,
+            width: metadata.width,
+            height: metadata.height,
+            file_size: optimizedBuffer.length,
+            sha: response.data.content.sha,
+            watermark_applied: hasWatermark && finalBuffer !== buffer,
+            watermark_text: hasWatermark && finalBuffer !== buffer ? watermarkOptions.text : null,
+            repository: {
+              owner,
+              name: repo,
+              full_name: `${owner}/${repo}`
+            }
+          });
+          
+        } catch (processingError) {
+          console.error('Image processing error:', processingError);
+          res.status(500).json({ error: 'Failed to process image' });
+        }
+      }
+    );
+    
+  } catch (error) {
+    console.error('Error uploading image:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all GitHub repositories (not just ones created through this app)
+router.get('/github/repositories', ensureAuthenticated, async (req, res) => {
+  try {
+    console.log('Fetching all GitHub repositories for user:', req.user.username);
+    
+    // Get the user's access token from database
+    db.get(
+      'SELECT access_token FROM users WHERE github_id = ?',
+      [req.user.id],
+      async (err, user) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Failed to fetch user' });
+        }
+        
+        if (!user) {
+          console.error('User not found in database for GitHub ID:', req.user.id);
+          return res.status(404).json({ error: 'User not found' });
+        }
+        
+        try {
+          // Create Octokit instance with user's access token
+          const { Octokit } = require('octokit');
+          const octokit = new Octokit({
+            auth: user.access_token
+          });
+          
+          // Fetch all repositories from GitHub
+          const { data: githubRepos } = await octokit.rest.repos.listForAuthenticatedUser({
+            type: 'all', // Get both public and private repos
+            sort: 'updated',
+            per_page: 100 // Get up to 100 repos
+          });
+          
+          console.log(`Found ${githubRepos.length} repositories on GitHub`);
+          
+          // Log first few repositories to see their structure
+          if (githubRepos.length > 0) {
+            console.log('First repository structure:', {
+              id: githubRepos[0].id,
+              name: githubRepos[0].name,
+              full_name: githubRepos[0].full_name,
+              owner: githubRepos[0].owner,
+              hasOwner: !!githubRepos[0].owner,
+              ownerKeys: githubRepos[0].owner ? Object.keys(githubRepos[0].owner) : []
+            });
+          }
+          
+          // Transform the data to match our format
+          const repositories = githubRepos.map(repo => ({
+            id: repo.id,
+            name: repo.name,
+            full_name: repo.full_name,
+            description: repo.description,
+            private: repo.private,
+            html_url: repo.html_url,
+            clone_url: repo.clone_url,
+            created_at: repo.created_at,
+            updated_at: repo.updated_at,
+            size: repo.size,
+            language: repo.language,
+            forks_count: repo.forks_count,
+            stargazers_count: repo.stargazers_count,
+            open_issues_count: repo.open_issues_count,
+            default_branch: repo.default_branch,
+            owner: {
+              login: repo.owner?.login || req.user.username,
+              id: repo.owner?.id || req.user.id,
+              type: repo.owner?.type || 'User'
+            },
+            is_created_through_app: false // This repo was not created through our app
+          }));
+          
+          console.log('Transformed repositories sample:', repositories.slice(0, 2));
+          res.json(repositories);
+          
+        } catch (githubError) {
+          console.error('GitHub API error:', githubError);
+          res.status(500).json({ error: 'Failed to fetch repositories from GitHub' });
+        }
+      }
+    );
+    
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get repository contents (folders and files)
+router.get('/github/repositories/:owner/:repo/contents', ensureAuthenticated, async (req, res) => {
+  try {
+    const { owner, repo } = req.params;
+    const { path = '' } = req.query; // Optional path parameter to browse subdirectories
+
+    // Get the user's access token from database
+    db.get(
+      'SELECT access_token FROM users WHERE github_id = ?',
+      [req.user.id],
+      async (err, user) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Failed to fetch user' });
+        }
+        
+        if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+
+        try {
+          const octokit = new Octokit({ auth: user.access_token });
+
+          // Get repository contents
+          const { data: contents } = await octokit.rest.repos.getContent({
+            owner,
+            repo,
+            path,
+            ref: 'main'
+          });
+
+          // Show ALL files and folders, not just images
+          const folders = [];
+          const files = [];
+
+          if (Array.isArray(contents)) {
+            contents.forEach(item => {
+              if (item.type === 'dir') {
+                folders.push({
+                  name: item.name,
+                  path: item.path,
+                  type: 'directory'
+                });
+              } else if (item.type === 'file') {
+                files.push({
+                  name: item.name,
+                  path: item.path,
+                  type: 'file',
+                  size: item.size,
+                  url: item.download_url,
+                  extension: item.name.split('.').pop().toLowerCase()
+                });
+              }
+            });
+          }
+
+          res.json({
+            folders,
+            files,
+            current_path: path,
+            parent_path: path.split('/').slice(0, -1).join('/') || ''
+          });
+
+        } catch (apiError) {
+          console.error('GitHub API error:', apiError);
+          if (apiError.status === 404) {
+            res.status(404).json({ error: 'Repository or path not found' });
+          } else {
+            res.status(500).json({ error: 'Failed to fetch repository contents' });
+          }
+        }
+      }
+    );
+    
+  } catch (error) {
+    console.error('Error fetching repository contents:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get user's repositories
 router.get('/repositories', ensureAuthenticated, async (req, res) => {
   try {
-    const { db } = require('../database/database');
+    console.log('Fetching repositories for user:', req.user.id);
+    console.log('User object:', req.user);
     
-    db.all(
-      'SELECT * FROM repositories WHERE user_id = (SELECT id FROM users WHERE github_id = ?) ORDER BY created_at DESC',
+    // First get the user's database ID from their GitHub ID
+    db.get(
+      'SELECT * FROM users WHERE github_id = ?',
       [req.user.id],
-      (err, repositories) => {
+      (err, user) => {
         if (err) {
           console.error('Database error:', err);
-          return res.status(500).json({ error: 'Failed to fetch repositories' });
+          return res.status(500).json({ error: 'Failed to fetch user' });
         }
-        res.json(repositories);
+        
+        console.log('Database user lookup result:', user);
+        
+        if (!user) {
+          console.error('User not found in database for GitHub ID:', req.user.id);
+          return res.status(404).json({ error: 'User not found' });
+        }
+        
+        console.log('Found user in database with ID:', user.id);
+        
+        // Now get repositories using the user's database ID
+        db.all(
+          'SELECT * FROM repositories WHERE user_id = ? ORDER BY created_at DESC',
+          [user.id],
+          (err, repositories) => {
+            if (err) {
+              console.error('Database error:', err);
+              return res.status(500).json({ error: 'Failed to fetch repositories' });
+            }
+            
+            console.log('Found repositories:', repositories);
+            res.json(repositories);
+          }
+        );
       }
     );
   } catch (error) {
@@ -167,9 +750,15 @@ router.post('/repositories/:repoId/images', ensureAuthenticated, upload.single('
   try {
     const { repoId } = req.params;
     const { filename, originalname, mimetype, buffer } = req.file;
+    const targetFolder = req.body.target_folder || 'images'; // Get target folder from form data
 
     if (!req.file) {
       return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    // Validate target folder (prevent path traversal attacks)
+    if (targetFolder && (targetFolder.includes('..') || targetFolder.includes('//') || targetFolder.startsWith('/'))) {
+      return res.status(400).json({ error: 'Invalid folder path' });
     }
 
     // First get the user's database ID from their GitHub ID
@@ -247,15 +836,33 @@ router.post('/repositories/:repoId/images', ensureAuthenticated, upload.single('
 
               const octokit = new Octokit({ auth: repo.access_token });
 
+              // Create folder if it doesn't exist (by creating a .gitkeep file)
+              if (targetFolder && targetFolder !== '') {
+                try {
+                  await octokit.rest.repos.createOrUpdateFileContents({
+                    owner: req.user.username,
+                    repo: repo.name,
+                    path: `${targetFolder}/.gitkeep`,
+                    message: `Create ${targetFolder}/ folder`,
+                    content: Buffer.from('').toString('base64'), // Empty file
+                    branch: 'main'
+                  });
+                  console.log(`Created folder: ${targetFolder}/`);
+                } catch (folderError) {
+                  // Folder might already exist, continue
+                  console.log(`Folder ${targetFolder}/ already exists or couldn't be created:`, folderError.message);
+                }
+              }
+
               // Upload to GitHub
               const commitMessage = hasWatermark 
-                ? `Add image: ${originalname} (with watermark: ${watermarkOptions.text})`
-                : `Add image: ${originalname}`;
+                ? `Add image: ${originalname} to ${targetFolder}/ (with watermark: ${watermarkOptions.text})`
+                : `Add image: ${originalname} to ${targetFolder}/`;
               
               const response = await octokit.rest.repos.createOrUpdateFileContents({
                 owner: req.user.username,
                 repo: repo.name,
-                path: `images/${uniqueFilename}`,
+                path: `${targetFolder}/${uniqueFilename}`,
                 message: commitMessage,
                 content: optimizedBuffer.toString('base64'),
                 branch: 'main'
@@ -263,12 +870,12 @@ router.post('/repositories/:repoId/images', ensureAuthenticated, upload.single('
 
                             const githubUrl = response.data.content.html_url;
               // Create CDN URL for direct image access
-              const cdnUrl = `https://raw.githubusercontent.com/${req.user.username}/${repo.name}/main/images/${uniqueFilename}`;
+              const cdnUrl = `https://raw.githubusercontent.com/${req.user.username}/${repo.name}/main/${targetFolder}/${uniqueFilename}`;
 
               // Store image metadata in database
               db.run(
                 'INSERT INTO images (repository_id, filename, original_name, file_path, file_size, mime_type, width, height, github_url, cdn_url, sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [repoId, uniqueFilename, originalname, `images/${uniqueFilename}`, optimizedBuffer.length, 'image/webp', metadata.width, metadata.height, githubUrl, cdnUrl, response.data.content.sha],
+                [repoId, uniqueFilename, originalname, `${targetFolder}/${uniqueFilename}`, optimizedBuffer.length, 'image/webp', metadata.width, metadata.height, githubUrl, cdnUrl, response.data.content.sha],
             function(err) {
               if (err) {
                 console.error('Database error:', err);
@@ -281,6 +888,7 @@ router.post('/repositories/:repoId/images', ensureAuthenticated, upload.single('
                 original_name: originalname,
                 github_url: githubUrl,
                 cdn_url: cdnUrl,
+                target_folder: targetFolder,
                 width: metadata.width,
                 height: metadata.height,
                 file_size: optimizedBuffer.length,
@@ -588,6 +1196,97 @@ router.get('/images/:imageId/cdn', async (req, res) => {
     );
   } catch (error) {
     console.error('Error fetching image CDN URL:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get repository contents (folders and files) for regular repositories
+router.get('/repositories/:repoId/contents', ensureAuthenticated, async (req, res) => {
+  try {
+    const { repoId } = req.params;
+    const { path = '' } = req.query; // Optional path parameter to browse subdirectories
+
+    // First get the user's database ID from their GitHub ID
+    db.get(
+      'SELECT id FROM users WHERE github_id = ?',
+      [req.user.id],
+      (err, user) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Failed to fetch user' });
+        }
+        
+        if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Verify repository belongs to user and get access token
+        db.get(
+          'SELECT r.*, u.access_token, u.username FROM repositories r JOIN users u ON r.user_id = u.id WHERE r.id = ? AND r.user_id = ?',
+          [repoId, user.id],
+          async (err, repo) => {
+            if (err || !repo) {
+              return res.status(404).json({ error: 'Repository not found or access denied' });
+            }
+
+            try {
+              const octokit = new Octokit({ auth: repo.access_token });
+
+              // Get repository contents
+              const { data: contents } = await octokit.rest.repos.getContent({
+                owner: repo.username,
+                repo: repo.name,
+                path,
+                ref: 'main'
+              });
+
+              // Show ALL files and folders, not just images
+              const folders = [];
+              const files = [];
+
+              if (Array.isArray(contents)) {
+                contents.forEach(item => {
+                  if (item.type === 'dir') {
+                    folders.push({
+                      name: item.name,
+                      path: item.path,
+                      type: 'directory'
+                    });
+                  } else if (item.type === 'file') {
+                    files.push({
+                      name: item.name,
+                      path: item.path,
+                      type: 'file',
+                      size: item.size,
+                      url: item.download_url,
+                      extension: item.name.split('.').pop().toLowerCase()
+                    });
+                  }
+                });
+              }
+
+              res.json({
+                folders,
+                files,
+                current_path: path,
+                parent_path: path.split('/').slice(0, -1).join('/') || ''
+              });
+
+            } catch (apiError) {
+              console.error('GitHub API error:', apiError);
+              if (apiError.status === 404) {
+                res.status(404).json({ error: 'Repository or path not found' });
+              } else {
+                res.status(500).json({ error: 'Failed to fetch repository contents' });
+              }
+            }
+          }
+        );
+      }
+    );
+    
+  } catch (error) {
+    console.error('Error fetching repository contents:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

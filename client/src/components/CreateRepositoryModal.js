@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import axios from 'axios';
 import { X, Folder, Lock, Globe } from 'lucide-react';
 
 function CreateRepositoryModal({ isOpen, onClose, onRepositoryCreated }) {
@@ -25,14 +24,25 @@ function CreateRepositoryModal({ isOpen, onClose, onRepositoryCreated }) {
       setLoading(true);
       setError(null);
       
-      const response = await axios.post('/api/repositories', formData, { 
-        withCredentials: true 
+      const response = await fetch('/api/repositories', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(formData)
       });
       
-      onRepositoryCreated(response.data);
+      if (response.ok) {
+        const data = await response.json();
+        onRepositoryCreated(data);
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to create repository');
+      }
     } catch (error) {
       console.error('Failed to create repository:', error);
-      setError(error.response?.data?.error || 'Failed to create repository');
+      setError('Failed to create repository');
     } finally {
       setLoading(false);
     }
