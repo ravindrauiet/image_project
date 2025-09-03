@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Image as ImageIcon, Calendar, Type, ExternalLink, Upload, FileImage, Folder, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Image as ImageIcon, Calendar, Type, ExternalLink, Upload, FileImage, Folder, BarChart3, Network } from 'lucide-react';
 import ImageUploadModal from './ImageUploadModal';
 import RepositoryGraph from './RepositoryGraph';
+import FileChain from './FileChain';
 
 function ExternalRepositoryManager() {
   const { owner, repo } = useParams();
@@ -12,6 +13,7 @@ function ExternalRepositoryManager() {
   const [error, setError] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showGraphModal, setShowGraphModal] = useState(false);
+  const [showFileChainModal, setShowFileChainModal] = useState(false);
 
   console.log('ExternalRepositoryManager rendered with params:', { owner, repo });
 
@@ -157,6 +159,13 @@ function ExternalRepositoryManager() {
             </div>
           </div>
           <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowFileChainModal(true)}
+              className="btn-secondary flex items-center space-x-2"
+            >
+              <Network className="h-4 w-4" />
+              <span>File Chain</span>
+            </button>
             <button
               onClick={() => setShowGraphModal(true)}
               className="btn-secondary flex items-center space-x-2"
@@ -342,6 +351,20 @@ function ExternalRepositoryManager() {
       <RepositoryGraph
         isOpen={showGraphModal}
         onClose={() => setShowGraphModal(false)}
+        repositoryId={`${owner}/${repo}`}
+        repositoryName={repository?.name}
+        isExternalRepository={true}
+        externalRepositoryInfo={repository ? {
+          owner,
+          name: repo,
+          full_name: repository.full_name
+        } : null}
+      />
+
+      {/* File Chain Modal */}
+      <FileChain
+        isOpen={showFileChainModal}
+        onClose={() => setShowFileChainModal(false)}
         repositoryId={`${owner}/${repo}`}
         repositoryName={repository?.name}
         isExternalRepository={true}

@@ -12,7 +12,7 @@ import {
   ArcElement,
 } from 'chart.js';
 import { Line, Bar, Doughnut } from 'react-chartjs-2';
-import { 
+import {
   BarChart3, 
   GitCommit, 
   FileText, 
@@ -432,6 +432,8 @@ function RepositoryGraph({ isOpen, onClose, repositoryId, repositoryName, isExte
     );
   };
 
+
+
   const renderContributors = () => {
     if (!graphData?.data) return null;
 
@@ -520,6 +522,8 @@ function RepositoryGraph({ isOpen, onClose, repositoryId, repositoryName, isExte
     );
   };
 
+
+
   const renderContent = () => {
     switch (activeTab) {
       case 'overview':
@@ -602,5 +606,7 @@ function RepositoryGraph({ isOpen, onClose, repositoryId, repositoryName, isExte
     </div>
   );
 }
+
+
 
 export default RepositoryGraph;

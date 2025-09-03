@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Trash2, Image as ImageIcon, Calendar, Type, ExternalLink, Upload, FileImage, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Trash2, Image as ImageIcon, Calendar, Type, ExternalLink, Upload, FileImage, BarChart3, Network } from 'lucide-react';
 import ImageUploadModal from './ImageUploadModal';
 import RepositoryGraph from './RepositoryGraph';
+import FileChain from './FileChain';
 
 function RepositoryDetail() {
   const { repoId } = useParams();
@@ -12,6 +13,7 @@ function RepositoryDetail() {
   const [error, setError] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showGraphModal, setShowGraphModal] = useState(false);
+  const [showFileChainModal, setShowFileChainModal] = useState(false);
 
   const fetchRepositoryData = useCallback(async () => {
     try {
@@ -103,6 +105,13 @@ function RepositoryDetail() {
           
           <div className="flex items-center space-x-3">
             <button
+              onClick={() => setShowFileChainModal(true)}
+              className="btn-secondary flex items-center space-x-2"
+            >
+              <Network className="h-4 w-4" />
+              <span>File Chain</span>
+            </button>
+            <button
               onClick={() => setShowGraphModal(true)}
               className="btn-secondary flex items-center space-x-2"
             >
@@ -179,6 +188,16 @@ function RepositoryDetail() {
         onClose={() => setShowGraphModal(false)}
         repositoryId={repoId}
         repositoryName={repository?.name}
+      />
+
+      {/* File Chain Modal */}
+      <FileChain
+        isOpen={showFileChainModal}
+        onClose={() => setShowFileChainModal(false)}
+        repositoryId={repoId}
+        repositoryName={repository?.name}
+        isExternalRepository={false}
+        externalRepositoryInfo={null}
       />
     </div>
   );

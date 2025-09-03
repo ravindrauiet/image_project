@@ -1236,6 +1236,10 @@ router.get('/github/repositories/:owner/:repo/graph', ensureAuthenticated, async
               // console.log('Getting file structure for external repo...');
               graphData = await getFileStructure(octokit, owner, repo);
               break;
+            case 'filechain':
+              // console.log('Getting file chain for external repo...');
+              graphData = await getFileChain(octokit, owner, repo);
+              break;
             case 'contributors':
               // console.log('Getting contributor activity for external repo...');
               graphData = await getContributorActivity(octokit, owner, repo);
@@ -1319,6 +1323,10 @@ router.get('/repositories/:repoId/graph', ensureAuthenticated, async (req, res) 
                 case 'files':
                   // console.log('Getting file structure...');
                   graphData = await getFileStructure(octokit, repo.username, repo.name);
+                  break;
+                case 'filechain':
+                  // console.log('Getting file chain...');
+                  graphData = await getFileChain(octokit, repo.username, repo.name);
                   break;
                 case 'contributors':
                   // console.log('Getting contributor activity...');
@@ -1535,6 +1543,206 @@ async function getContributorActivity(octokit, owner, repo) {
     console.error('Error getting contributor activity:', error);
     throw error;
   }
+}
+
+// Helper function to get file chain (recursive file structure with dependencies)
+async function getFileChain(octokit, owner, repo) {
+  try {
+    // Get repository info to get default branch
+    const repoInfo = await octokit.rest.repos.get({ owner, repo });
+    const defaultBranch = repoInfo.data.default_branch || 'main';
+    
+    // Get recursive file structure
+    const fileTree = await getRecursiveFileStructure(octokit, owner, repo, '', defaultBranch);
+    
+    // Analyze dependencies in code files
+    const dependencies = await analyzeDependencies(octokit, owner, repo, fileTree, defaultBranch);
+    
+    // Calculate statistics
+    const stats = calculateFileTreeStats(fileTree);
+    
+    return {
+      fileTree,
+      dependencies,
+      totalFiles: stats.totalFiles,
+      totalFolders: stats.totalFolders,
+      maxDepth: stats.maxDepth
+    };
+  } catch (error) {
+    console.error('Error getting file chain:', error);
+    throw error;
+  }
+}
+
+// Helper function to get recursive file structure
+async function getRecursiveFileStructure(octokit, owner, repo, path, branch, maxDepth = 5, currentDepth = 0) {
+  if (currentDepth >= maxDepth) return [];
+  
+  try {
+    const contents = await octokit.rest.repos.getContent({
+      owner,
+      repo,
+      path,
+      ref: branch
+    });
+
+    if (!Array.isArray(contents.data)) return [];
+
+    const result = [];
+    
+    for (const item of contents.data) {
+      const itemData = {
+        name: item.name,
+        path: item.path,
+        type: item.type,
+        size: item.size,
+        extension: item.name.includes('.') ? item.name.split('.').pop().toLowerCase() : null
+      };
+
+      if (item.type === 'dir') {
+        // Recursively get children for directories
+        itemData.children = await getRecursiveFileStructure(
+          octokit, 
+          owner, 
+          repo, 
+          item.path, 
+          branch, 
+          maxDepth, 
+          currentDepth + 1
+        );
+      }
+
+      result.push(itemData);
+    }
+
+    return result;
+  } catch (error) {
+    console.error(`Error getting contents for path ${path}:`, error);
+    return [];
+  }
+}
+
+// Helper function to analyze dependencies in code files
+async function analyzeDependencies(octokit, owner, repo, fileTree, branch) {
+  const dependencies = [];
+  const codeExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.cpp', '.c', '.cs', '.php', '.rb', '.go'];
+  
+  // Flatten file tree to get all files
+  const allFiles = flattenFileTree(fileTree);
+  
+  // Filter to only code files
+  const codeFiles = allFiles.filter(file => 
+    file.type === 'file' && 
+    file.extension && 
+    codeExtensions.includes(`.${file.extension}`)
+  );
+
+  // Analyze each code file for dependencies
+  for (const file of codeFiles.slice(0, 20)) { // Limit to first 20 files to avoid rate limits
+    try {
+      const fileContent = await octokit.rest.repos.getContent({
+        owner,
+        repo,
+        path: file.path,
+        ref: branch
+      });
+
+      if (fileContent.data && fileContent.data.content) {
+        const content = Buffer.from(fileContent.data.content, 'base64').toString('utf-8');
+        const fileDeps = extractDependencies(content, file.path);
+        dependencies.push(...fileDeps);
+      }
+    } catch (error) {
+      // Skip files that can't be read (might be binary or too large)
+      continue;
+    }
+  }
+
+  return dependencies;
+}
+
+// Helper function to extract dependencies from file content
+function extractDependencies(content, filePath) {
+  const dependencies = [];
+  const lines = content.split('\n');
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    
+    // JavaScript/TypeScript imports
+    if (trimmedLine.startsWith('import ') || trimmedLine.startsWith('require(')) {
+      const match = trimmedLine.match(/from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/);
+      if (match) {
+        const dep = match[1] || match[2];
+        if (dep && !dep.startsWith('http') && !dep.startsWith('node_modules')) {
+          dependencies.push({
+            from: filePath,
+            to: dep,
+            type: 'import',
+            line: trimmedLine
+          });
+        }
+      }
+    }
+    
+    // Python imports
+    if (trimmedLine.startsWith('import ') || trimmedLine.startsWith('from ')) {
+      const match = trimmedLine.match(/import\s+([a-zA-Z_][a-zA-Z0-9_.]*)|from\s+([a-zA-Z_][a-zA-Z0-9_.]*)/);
+      if (match) {
+        const dep = match[1] || match[2];
+        if (dep && !dep.includes(' ')) {
+          dependencies.push({
+            from: filePath,
+            to: dep,
+            type: 'import',
+            line: trimmedLine
+          });
+        }
+      }
+    }
+  }
+  
+  return dependencies;
+}
+
+// Helper function to flatten file tree
+function flattenFileTree(tree) {
+  const result = [];
+  
+  for (const item of tree) {
+    result.push(item);
+    if (item.children && item.children.length > 0) {
+      result.push(...flattenFileTree(item.children));
+    }
+  }
+  
+  return result;
+}
+
+// Helper function to calculate file tree statistics
+function calculateFileTreeStats(tree) {
+  let totalFiles = 0;
+  let totalFolders = 0;
+  let maxDepth = 0;
+  
+  function traverse(items, depth = 0) {
+    maxDepth = Math.max(maxDepth, depth);
+    
+    for (const item of items) {
+      if (item.type === 'file') {
+        totalFiles++;
+      } else if (item.type === 'dir') {
+        totalFolders++;
+        if (item.children && item.children.length > 0) {
+          traverse(item.children, depth + 1);
+        }
+      }
+    }
+  }
+  
+  traverse(tree);
+  
+  return { totalFiles, totalFolders, maxDepth };
 }
 
 // Get repository contents (folders and files) for regular repositories
