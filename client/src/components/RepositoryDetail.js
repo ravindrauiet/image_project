@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Trash2, Image as ImageIcon, Calendar, Type, ExternalLink, Upload, FileImage } from 'lucide-react';
+import { ArrowLeft, Trash2, Image as ImageIcon, Calendar, Type, ExternalLink, Upload, FileImage, BarChart3 } from 'lucide-react';
 import ImageUploadModal from './ImageUploadModal';
+import RepositoryGraph from './RepositoryGraph';
 
 function RepositoryDetail() {
   const { repoId } = useParams();
@@ -10,6 +11,7 @@ function RepositoryDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showGraphModal, setShowGraphModal] = useState(false);
 
   const fetchRepositoryData = useCallback(async () => {
     try {
@@ -100,6 +102,13 @@ function RepositoryDetail() {
           </div>
           
           <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowGraphModal(true)}
+              className="btn-secondary flex items-center space-x-2"
+            >
+              <BarChart3 className="h-4 w-4" />
+              <span>View Graph</span>
+            </button>
             <a
               href={repository.html_url}
               target="_blank"
@@ -162,6 +171,14 @@ function RepositoryDetail() {
         onClose={() => setShowUploadModal(false)}
         repositoryId={repoId}
         onImageUploaded={handleImageUploaded}
+      />
+
+      {/* Graph Modal */}
+      <RepositoryGraph
+        isOpen={showGraphModal}
+        onClose={() => setShowGraphModal(false)}
+        repositoryId={repoId}
+        repositoryName={repository?.name}
       />
     </div>
   );
