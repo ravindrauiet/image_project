@@ -70,21 +70,21 @@ function RepositoryGraph({ isOpen, onClose, repositoryId, repositoryName, isExte
         url = `/api/repositories/${repositoryId}/graph?type=${type}`;
       }
       
-      console.log('Fetching graph data for type:', type, 'URL:', url);
+      // console.log('Fetching graph data for type:', type, 'URL:', url);
       
       const response = await fetch(url, {
         credentials: 'include'
       });
 
-      console.log('Response status:', response.status);
+      // console.log('Response status:', response.status);
 
       if (response.ok) {
         const data = await response.json();
-        console.log('Graph data received:', data);
+        // console.log('Graph data received:', data);
         setGraphData(data);
       } else {
         const errorData = await response.json();
-        console.error('Error response:', errorData);
+        // console.error('Error response:', errorData);
         setError(errorData.error || 'Failed to fetch graph data');
       }
     } catch (err) {
@@ -99,6 +99,16 @@ function RepositoryGraph({ isOpen, onClose, repositoryId, repositoryName, isExte
     if (!graphData?.data) return null;
 
     const { overview, commits, languages, contributors } = graphData.data;
+
+    // Check if we have the correct data structure for overview
+    if (!overview || !commits || !languages || !contributors) {
+      return (
+        <div className="text-center py-12">
+          <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-500">No overview data available</p>
+        </div>
+      );
+    }
 
     return (
       <div className="space-y-6">
@@ -235,19 +245,29 @@ function RepositoryGraph({ isOpen, onClose, repositoryId, repositoryName, isExte
 
   const renderCommits = () => {
     if (!graphData?.data) {
-      console.log('No graph data available for commits');
+      // console.log('No graph data available for commits');
       return null;
     }
 
-    console.log('Rendering commits with data:', graphData.data);
+    // console.log('Rendering commits with data:', graphData.data);
     const { chartData, totalCommits, recentCommits } = graphData.data;
+
+    // Check if we have the correct data structure for commits
+    if (!chartData || !Array.isArray(chartData)) {
+      return (
+        <div className="text-center py-12">
+          <GitCommit className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-500">No commit data available</p>
+        </div>
+      );
+    }
 
     if (!chartData || chartData.length === 0) {
       return (
         <div className="text-center py-12">
           <GitCommit className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <p className="text-gray-500">No commit data available</p>
-          <p className="text-sm text-gray-400 mt-2">Chart data: {JSON.stringify(chartData)}</p>
+          {/* <p className="text-sm text-gray-400 mt-2">Chart data: {JSON.stringify(chartData)}</p> */}
         </div>
       );
     }
@@ -323,12 +343,22 @@ function RepositoryGraph({ isOpen, onClose, repositoryId, repositoryName, isExte
 
   const renderFiles = () => {
     if (!graphData?.data) {
-      console.log('No graph data available for files');
+      // console.log('No graph data available for files');
       return null;
     }
 
-    console.log('Rendering files with data:', graphData.data);
+    // console.log('Rendering files with data:', graphData.data);
     const { fileTypes, folders, totalFiles } = graphData.data;
+
+    // Check if we have the correct data structure for files
+    if (!fileTypes || !Array.isArray(fileTypes)) {
+      return (
+        <div className="text-center py-12">
+          <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-500">No file data available</p>
+        </div>
+      );
+    }
 
     return (
       <div className="space-y-6">
@@ -373,7 +403,7 @@ function RepositoryGraph({ isOpen, onClose, repositoryId, repositoryName, isExte
           ) : (
             <div className="text-center py-8">
               <p className="text-gray-500">No file type data available</p>
-              <p className="text-sm text-gray-400 mt-2">File types: {JSON.stringify(fileTypes)}</p>
+              {/* <p className="text-sm text-gray-400 mt-2">File types: {JSON.stringify(fileTypes)}</p> */}
             </div>
           )}
         </div>
@@ -393,7 +423,7 @@ function RepositoryGraph({ isOpen, onClose, repositoryId, repositoryName, isExte
             ) : (
               <div className="text-center py-4">
                 <p className="text-gray-500">No folders found</p>
-                <p className="text-sm text-gray-400 mt-2">Folders: {JSON.stringify(folders)}</p>
+                {/* <p className="text-sm text-gray-400 mt-2">Folders: {JSON.stringify(folders)}</p> */}
               </div>
             )}
           </div>
@@ -406,6 +436,16 @@ function RepositoryGraph({ isOpen, onClose, repositoryId, repositoryName, isExte
     if (!graphData?.data) return null;
 
     const { contributors, totalContributors } = graphData.data;
+
+    // Check if we have the correct data structure for contributors
+    if (!contributors || !Array.isArray(contributors)) {
+      return (
+        <div className="text-center py-12">
+          <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-500">No contributor data available</p>
+        </div>
+      );
+    }
 
     return (
       <div className="space-y-6">
@@ -539,46 +579,6 @@ function RepositoryGraph({ isOpen, onClose, repositoryId, repositoryName, isExte
 
         {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-          {/* Debug Section */}
-          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p className="text-sm text-yellow-800">
-              <strong>Debug:</strong> Active tab: {activeTab} | Repository: {repositoryName} | 
-              External: {isExternalRepository ? 'Yes' : 'No'}
-            </p>
-            <div className="mt-2 space-x-2">
-              <button
-                onClick={() => {
-                  const testUrl = isExternalRepository && externalRepositoryInfo 
-                    ? `/api/test/graph/${externalRepositoryInfo.owner}/${externalRepositoryInfo.name}?type=commits`
-                    : `/api/test/graph/test/test?type=commits`;
-                  console.log('Test URL:', testUrl);
-                  fetch(testUrl, { credentials: 'include' })
-                    .then(res => res.json())
-                    .then(data => console.log('Test result:', data))
-                    .catch(err => console.error('Test error:', err));
-                }}
-                className="px-2 py-1 text-xs bg-yellow-200 text-yellow-800 rounded hover:bg-yellow-300"
-              >
-                Test Commits API
-              </button>
-              <button
-                onClick={() => {
-                  const testUrl = isExternalRepository && externalRepositoryInfo 
-                    ? `/api/test/graph/${externalRepositoryInfo.owner}/${externalRepositoryInfo.name}?type=files`
-                    : `/api/test/graph/test/test?type=files`;
-                  console.log('Test URL:', testUrl);
-                  fetch(testUrl, { credentials: 'include' })
-                    .then(res => res.json())
-                    .then(data => console.log('Test result:', data))
-                    .catch(err => console.error('Test error:', err));
-                }}
-                className="px-2 py-1 text-xs bg-yellow-200 text-yellow-800 rounded hover:bg-yellow-300"
-              >
-                Test Files API
-              </button>
-            </div>
-          </div>
-
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>

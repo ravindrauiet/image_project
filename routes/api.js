@@ -1200,77 +1200,6 @@ router.get('/images/:imageId/cdn', async (req, res) => {
   }
 });
 
-// Test endpoint for debugging graph data
-router.get('/test/graph/:owner/:repo', ensureAuthenticated, async (req, res) => {
-  try {
-    const { owner, repo } = req.params;
-    const { type = 'commits' } = req.query;
-
-    // Get the user's access token from database
-    db.get(
-      'SELECT access_token FROM users WHERE github_id = ?',
-      [req.user.id],
-      async (err, user) => {
-        if (err || !user) {
-          return res.status(500).json({ error: 'User not found' });
-        }
-
-        try {
-          const octokit = new Octokit({ auth: user.access_token });
-          
-          if (type === 'commits') {
-            const commits = await octokit.rest.repos.listCommits({ 
-              owner, 
-              repo, 
-              per_page: 10 
-            });
-            res.json({
-              success: true,
-              data: {
-                totalCommits: commits.data.length,
-                commits: commits.data.map(commit => ({
-                  sha: commit.sha.substring(0, 7),
-                  message: commit.commit.message,
-                  author: commit.commit.author.name,
-                  date: commit.commit.author.date
-                }))
-              }
-            });
-          } else if (type === 'files') {
-            const repoInfo = await octokit.rest.repos.get({ owner, repo });
-            const defaultBranch = repoInfo.data.default_branch || 'main';
-            
-            const contents = await octokit.rest.repos.getContent({
-              owner,
-              repo,
-              path: '',
-              ref: defaultBranch
-            });
-            
-            res.json({
-              success: true,
-              data: {
-                defaultBranch,
-                isArray: Array.isArray(contents.data),
-                contentsLength: Array.isArray(contents.data) ? contents.data.length : 'not array',
-                contents: Array.isArray(contents.data) ? contents.data.slice(0, 5) : contents.data
-              }
-            });
-          }
-        } catch (apiError) {
-          console.error('Test API error:', apiError);
-          res.status(500).json({ 
-            error: 'API Error',
-            details: apiError.message,
-            status: apiError.status
-          });
-        }
-      }
-    );
-  } catch (error) {
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 // Get external repository graph data
 router.get('/github/repositories/:owner/:repo/graph', ensureAuthenticated, async (req, res) => {
@@ -1294,31 +1223,31 @@ router.get('/github/repositories/:owner/:repo/graph', ensureAuthenticated, async
 
         try {
           const octokit = new Octokit({ auth: user.access_token });
-          console.log('Processing external graph request for type:', type, 'repo:', `${owner}/${repo}`);
+          // console.log('Processing external graph request for type:', type, 'repo:', `${owner}/${repo}`);
 
           let graphData = {};
 
           switch (type) {
             case 'commits':
-              console.log('Getting commit history for external repo...');
+              // console.log('Getting commit history for external repo...');
               graphData = await getCommitHistory(octokit, owner, repo);
               break;
             case 'files':
-              console.log('Getting file structure for external repo...');
+              // console.log('Getting file structure for external repo...');
               graphData = await getFileStructure(octokit, owner, repo);
               break;
             case 'contributors':
-              console.log('Getting contributor activity for external repo...');
+              // console.log('Getting contributor activity for external repo...');
               graphData = await getContributorActivity(octokit, owner, repo);
               break;
             case 'overview':
             default:
-              console.log('Getting repository overview for external repo...');
+              // console.log('Getting repository overview for external repo...');
               graphData = await getRepositoryOverview(octokit, owner, repo);
               break;
           }
           
-          console.log('External graph data prepared:', Object.keys(graphData));
+          // console.log('External graph data prepared:', Object.keys(graphData));
 
           res.json({
             repository: {
@@ -1378,31 +1307,31 @@ router.get('/repositories/:repoId/graph', ensureAuthenticated, async (req, res) 
 
             try {
               const octokit = new Octokit({ auth: repo.access_token });
-              console.log('Processing graph request for type:', type, 'repo:', repo.name);
+              // console.log('Processing graph request for type:', type, 'repo:', repo.name);
 
               let graphData = {};
 
               switch (type) {
                 case 'commits':
-                  console.log('Getting commit history...');
+                  // console.log('Getting commit history...');
                   graphData = await getCommitHistory(octokit, repo.username, repo.name);
                   break;
                 case 'files':
-                  console.log('Getting file structure...');
+                  // console.log('Getting file structure...');
                   graphData = await getFileStructure(octokit, repo.username, repo.name);
                   break;
                 case 'contributors':
-                  console.log('Getting contributor activity...');
+                  // console.log('Getting contributor activity...');
                   graphData = await getContributorActivity(octokit, repo.username, repo.name);
                   break;
                 case 'overview':
                 default:
-                  console.log('Getting repository overview...');
+                  // console.log('Getting repository overview...');
                   graphData = await getRepositoryOverview(octokit, repo.username, repo.name);
                   break;
               }
               
-              console.log('Graph data prepared:', Object.keys(graphData));
+              // console.log('Graph data prepared:', Object.keys(graphData));
 
               res.json({
                 repository: {
@@ -1492,13 +1421,13 @@ async function getRepositoryOverview(octokit, owner, repo) {
 // Helper function to get commit history
 async function getCommitHistory(octokit, owner, repo) {
   try {
-    console.log('Getting commit history for:', owner, repo);
+    // console.log('Getting commit history for:', owner, repo);
     const commits = await octokit.rest.repos.listCommits({ 
       owner, 
       repo, 
       per_page: 100 
     });
-    console.log('Commits received:', commits.data.length);
+    // console.log('Commits received:', commits.data.length);
 
     // Group commits by date
     const commitsByDate = {};
@@ -1537,12 +1466,12 @@ async function getCommitHistory(octokit, owner, repo) {
 // Helper function to get file structure
 async function getFileStructure(octokit, owner, repo) {
   try {
-    console.log('Getting file structure for:', owner, repo);
+    // console.log('Getting file structure for:', owner, repo);
     
     // First get the repository info to get the default branch
     const repoInfo = await octokit.rest.repos.get({ owner, repo });
     const defaultBranch = repoInfo.data.default_branch || 'main';
-    console.log('Using default branch:', defaultBranch);
+    // console.log('Using default branch:', defaultBranch);
     
     const contents = await octokit.rest.repos.getContent({
       owner,
@@ -1550,7 +1479,7 @@ async function getFileStructure(octokit, owner, repo) {
       path: '',
       ref: defaultBranch
     });
-    console.log('Contents received:', Array.isArray(contents.data) ? contents.data.length : 'not array');
+    // console.log('Contents received:', Array.isArray(contents.data) ? contents.data.length : 'not array');
 
     const fileTypes = {};
     const folderStructure = [];
