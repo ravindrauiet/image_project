@@ -18,10 +18,12 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
   const [viewMode, setViewMode] = useState('3d'); // '2d' or '3d'
   const [selectedNode, setSelectedNode] = useState(null);
   const [showDependencies, setShowDependencies] = useState(true);
+  const [viewAngle, setViewAngle] = useState(0);
+  const [viewDistance, setViewDistance] = useState(1);
   const svgRef = useRef();
   const containerRef = useRef();
 
-  const fetchFileChainData = async () => {
+  const fetchFileChainData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -50,7 +52,7 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
     } finally {
       setLoading(false);
     }
-  };
+  }, [repositoryId, isExternalRepository, externalRepositoryInfo]);
 
   const createGraphNodes = useCallback((fileTree, dependencies) => {
     const nodes = [];
@@ -120,10 +122,22 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
 
-    const width = containerRef.current?.clientWidth || 800;
-    const height = containerRef.current?.clientHeight || 600;
+    const width = Math.max(containerRef.current?.clientWidth || 800, 1200);
+    const height = Math.max(containerRef.current?.clientHeight || 600, 1000);
 
     svg.attr("width", width).attr("height", height);
+
+    // Add zoom behavior
+    const zoom = d3.zoom()
+      .scaleExtent([0.1, 4])
+      .on("zoom", (event) => {
+        container.attr("transform", event.transform);
+      });
+
+    svg.call(zoom);
+
+    // Create a container for the graph elements
+    const container = svg.append("g");
 
     // Create force simulation
     const simulation = d3.forceSimulation(nodes)
@@ -133,7 +147,7 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
       .force("collision", d3.forceCollide().radius(30));
 
     // Create links
-    const link = svg.append("g")
+    const link = container.append("g")
       .selectAll("line")
       .data(links)
       .enter().append("line")
@@ -142,7 +156,7 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
       .attr("stroke-opacity", 0.6);
 
     // Create nodes
-    const node = svg.append("g")
+    const node = container.append("g")
       .selectAll("g")
       .data(nodes)
       .enter().append("g")
@@ -211,33 +225,52 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
   const render3DGraph = useCallback(() => {
     if (!graphData?.data || !svgRef.current) return;
 
+    console.log('Rendering 3D graph with viewAngle:', viewAngle, 'viewDistance:', viewDistance);
     const { fileTree, dependencies } = graphData.data;
     const { nodes, links } = createGraphNodes(fileTree, dependencies);
 
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
 
-    const width = containerRef.current?.clientWidth || 800;
-    const height = containerRef.current?.clientHeight || 600;
+    const width = Math.max(containerRef.current?.clientWidth || 800, 1200);
+    const height = Math.max(containerRef.current?.clientHeight || 600, 1000);
 
     svg.attr("width", width).attr("height", height);
 
+    // Add zoom behavior
+    const zoom = d3.zoom()
+      .scaleExtent([0.1, 4])
+      .on("zoom", (event) => {
+        container.attr("transform", event.transform);
+      });
+
+    svg.call(zoom);
+
+    // Create a container for the graph elements
+    const container = svg.append("g");
+
     // Create 3D-like force simulation with depth
     const simulation = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links).id(d => d.id).distance(120))
-      .force("charge", d3.forceManyBody().strength(-400))
+      .force("link", d3.forceLink(links).id(d => d.id).distance(120 * viewDistance))
+      .force("charge", d3.forceManyBody().strength(-400 * viewDistance))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide().radius(35))
+      .force("collision", d3.forceCollide().radius(35 * viewDistance))
       .force("x", d3.forceX(width / 2).strength(0.1))
       .force("y", d3.forceY(height / 2).strength(0.1));
 
-    // Add z-coordinate to nodes for 3D effect
-    nodes.forEach(node => {
-      node.z = Math.random() * 100 - 50;
+    // Add z-coordinate to nodes for 3D effect with better distribution
+    nodes.forEach((node, index) => {
+      // Create a more structured 3D layout
+      const angle = (index / nodes.length) * Math.PI * 2;
+      const radius = 50 + (node.level * 20);
+      node.z = Math.sin(angle) * radius;
+      node.originalZ = node.z;
+      // Apply view distance scaling
+      node.z = node.z * viewDistance;
     });
 
     // Create links with 3D perspective
-    const link = svg.append("g")
+    const link = container.append("g")
       .selectAll("line")
       .data(links)
       .enter().append("line")
@@ -251,7 +284,7 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
       });
 
     // Create nodes with 3D perspective
-    const node = svg.append("g")
+    const node = container.append("g")
       .selectAll("g")
       .data(nodes)
       .enter().append("g")
@@ -266,8 +299,9 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
     node.append("circle")
       .attr("r", d => {
         const baseRadius = d.isFolder ? 18 : 10;
-        const zFactor = 1 + (d.z || 0) / 200;
-        return baseRadius * zFactor;
+        const z = d.z || 0;
+        const zFactor = 1 + Math.abs(z) / 200;
+        return (baseRadius * zFactor) / viewDistance;
       })
       .attr("fill", d => {
         const baseColor = d.isFolder ? "#3b82f6" : "#10b981";
@@ -278,7 +312,7 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
       .attr("stroke", "#fff")
       .attr("stroke-width", d => {
         const z = d.z || 0;
-        return Math.max(1, 3 - Math.abs(z) / 50);
+        return Math.max(1, 3 - Math.abs(z) / 50) / viewDistance;
       })
       .attr("opacity", d => {
         const z = d.z || 0;
@@ -290,14 +324,14 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
       .attr("dy", d => {
         const baseOffset = d.isFolder ? 30 : 18;
         const z = d.z || 0;
-        return baseOffset + z / 10;
+        return (baseOffset + z / 10) / viewDistance;
       })
       .attr("text-anchor", "middle")
       .style("font-size", d => {
         const z = d.z || 0;
         const baseSize = 12;
         const zFactor = 1 + Math.abs(z) / 200;
-        return `${baseSize * zFactor}px`;
+        return `${(baseSize * zFactor) / viewDistance}px`;
       })
       .style("fill", d => {
         const z = d.z || 0;
@@ -314,20 +348,46 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
     node.append("title")
       .text(d => `${d.name}\nType: ${d.type}\nPath: ${d.path}\nDepth: ${Math.round(d.z || 0)}`);
 
-    // Update positions on simulation tick with 3D perspective
+    // Update positions on simulation tick with enhanced 3D perspective
     simulation.on("tick", () => {
       link
-        .attr("x1", d => d.source.x)
-        .attr("y1", d => d.source.y)
-        .attr("x2", d => d.target.x)
-        .attr("y2", d => d.target.y);
+        .attr("x1", d => {
+          const sourceZ = d.source.z || 0;
+          const targetZ = d.target.z || 0;
+          const avgZ = (sourceZ + targetZ) / 2;
+          const perspectiveX = d.source.x + (avgZ * Math.cos(viewAngle) * 0.1);
+          return perspectiveX;
+        })
+        .attr("y1", d => {
+          const sourceZ = d.source.z || 0;
+          const targetZ = d.target.z || 0;
+          const avgZ = (sourceZ + targetZ) / 2;
+          const perspectiveY = d.source.y + (avgZ * Math.sin(viewAngle) * 0.1);
+          return perspectiveY;
+        })
+        .attr("x2", d => {
+          const sourceZ = d.source.z || 0;
+          const targetZ = d.target.z || 0;
+          const avgZ = (sourceZ + targetZ) / 2;
+          const perspectiveX = d.target.x + (avgZ * Math.cos(viewAngle) * 0.1);
+          return perspectiveX;
+        })
+        .attr("y2", d => {
+          const sourceZ = d.source.z || 0;
+          const targetZ = d.target.z || 0;
+          const avgZ = (sourceZ + targetZ) / 2;
+          const perspectiveY = d.target.y + (avgZ * Math.sin(viewAngle) * 0.1);
+          return perspectiveY;
+        });
 
       node
         .attr("transform", d => {
           const z = d.z || 0;
-          const scale = Math.max(0.8, 1 - Math.abs(z) / 300);
-          const translateX = d.x + (z / 10);
-          const translateY = d.y + (z / 10);
+          const perspectiveX = z * Math.cos(viewAngle) * 0.1;
+          const perspectiveY = z * Math.sin(viewAngle) * 0.1;
+          const scale = Math.max(0.5, 1 - Math.abs(z) / 200) * viewDistance;
+          const translateX = d.x + perspectiveX;
+          const translateY = d.y + perspectiveY;
           return `translate(${translateX},${translateY}) scale(${scale})`;
         });
     });
@@ -354,16 +414,49 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
     node.on("click", (event, d) => {
       setSelectedNode(d);
     });
-  }, [graphData, showDependencies, createGraphNodes]);
+  }, [graphData, showDependencies, createGraphNodes, viewAngle, viewDistance]);
 
   useEffect(() => {
     if (isOpen && repositoryId) {
       fetchFileChainData();
     }
-  }, [isOpen, repositoryId, isExternalRepository, externalRepositoryInfo]);
+  }, [isOpen, repositoryId, isExternalRepository, externalRepositoryInfo, fetchFileChainData]);
+
+  // Add keyboard controls for 3D navigation
+  useEffect(() => {
+    if (!isOpen || viewMode !== '3d') return;
+
+    const handleKeyPress = (event) => {
+      switch (event.key) {
+        case 'ArrowLeft':
+          setViewAngle(viewAngle - 0.1);
+          break;
+        case 'ArrowRight':
+          setViewAngle(viewAngle + 0.1);
+          break;
+        case 'ArrowUp':
+          setViewDistance(Math.min(2, viewDistance + 0.1));
+          break;
+        case 'ArrowDown':
+          setViewDistance(Math.max(0.5, viewDistance - 0.1));
+          break;
+        case 'r':
+        case 'R':
+          setViewAngle(0);
+          setViewDistance(1);
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [isOpen, viewMode, viewAngle, viewDistance]);
 
   useEffect(() => {
     if (graphData && !loading && !error) {
+      console.log('useEffect triggered - viewMode:', viewMode, 'viewAngle:', viewAngle, 'viewDistance:', viewDistance);
       // Small delay to ensure DOM is ready
       setTimeout(() => {
         if (viewMode === '2d') {
@@ -373,7 +466,7 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
         }
       }, 100);
     }
-  }, [graphData, viewMode, showDependencies, loading, error, render2DGraph, render3DGraph]);
+  }, [graphData, viewMode, showDependencies, loading, error, render2DGraph, render3DGraph, viewAngle, viewDistance]);
 
   if (!isOpen) return null;
 
@@ -434,6 +527,68 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
               {showDependencies ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
               <span>Dependencies</span>
             </button>
+
+            {viewMode === '3d' && (
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => {
+                    const newAngle = viewAngle - 0.2;
+                    setViewAngle(newAngle);
+                    console.log('Rotate left to:', newAngle);
+                  }}
+                  className="px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+                  title="Rotate Left"
+                >
+                  ↶
+                </button>
+                <button
+                  onClick={() => {
+                    const newAngle = viewAngle + 0.2;
+                    setViewAngle(newAngle);
+                    console.log('Rotate right to:', newAngle);
+                  }}
+                  className="px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+                  title="Rotate Right"
+                >
+                  ↷
+                </button>
+                <button
+                  onClick={() => {
+                    const newDistance = Math.max(0.5, viewDistance - 0.1);
+                    setViewDistance(newDistance);
+                    console.log('Zoom out to:', newDistance);
+                  }}
+                  className="px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+                  title="Zoom Out"
+                >
+                  −
+                </button>
+                <button
+                  onClick={() => {
+                    const newDistance = Math.min(2, viewDistance + 0.1);
+                    setViewDistance(newDistance);
+                    console.log('Zoom in to:', newDistance);
+                  }}
+                  className="px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+                  title="Zoom In"
+                >
+                  +
+                </button>
+                <button
+                  onClick={() => {
+                    setViewAngle(0);
+                    setViewDistance(1);
+                  }}
+                  className="px-2 py-1 bg-blue-200 text-blue-700 rounded hover:bg-blue-300 transition-colors"
+                  title="Reset View"
+                >
+                  Reset
+                </button>
+                <span className="text-xs text-gray-500">
+                  Angle: {Math.round(viewAngle * 180 / Math.PI)}° | Distance: {viewDistance.toFixed(1)}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center space-x-2">
@@ -449,8 +604,8 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
 
         {/* Content */}
         <div className="flex h-[calc(95vh-200px)]">
-          {/* Graph Area */}
-          <div className="flex-1 relative" ref={containerRef}>
+                    {/* Graph Area */}
+          <div className="flex-1 relative overflow-auto" ref={containerRef}>
             {loading ? (
               <div className="flex items-center justify-center h-full">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -468,12 +623,12 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
                   </button>
                 </div>
               </div>
-                         ) : (
-               <>
-                 <svg ref={svgRef} className="w-full h-full"></svg>
-                 {viewMode === '2d' ? render2DGraph() : render3DGraph()}
-               </>
-             )}
+            ) : (
+              <>
+                <svg ref={svgRef} className="w-full h-full min-w-full min-h-full"></svg>
+                {viewMode === '2d' ? render2DGraph() : render3DGraph()}
+              </>
+            )}
           </div>
 
           {/* Sidebar */}
@@ -553,9 +708,21 @@ function FileChain({ isOpen, onClose, repositoryId, repositoryName, isExternalRe
                   <span>Dependencies ({graphData.data.dependencies?.length || 0})</span>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <Layers className="h-4 w-4" />
-                <span>Max Depth: {graphData.data.maxDepth}</span>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <Layers className="h-4 w-4" />
+                  <span>Max Depth: {graphData.data.maxDepth}</span>
+                </div>
+                {viewMode === '3d' && (
+                  <div className="text-xs text-gray-500">
+                    <span className="font-medium">3D Controls:</span> Arrow keys to navigate, R to reset | Mouse wheel to zoom, drag to pan
+                  </div>
+                )}
+                {viewMode === '2d' && (
+                  <div className="text-xs text-gray-500">
+                    <span className="font-medium">2D Controls:</span> Mouse wheel to zoom, drag to pan
+                  </div>
+                )}
               </div>
             </div>
           </div>
